@@ -10,18 +10,21 @@ import (
 	humanize "github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/dustin/go-humanize"
 
 	cmds "github.com/ipfs/go-ipfs/commands"
-	metrics "gx/ipfs/QmVL44QeoQDTYK8RVdpkyja7uYcK3WDNoBNHVLonf9YDtm/go-libp2p/p2p/metrics"
-	protocol "gx/ipfs/QmVL44QeoQDTYK8RVdpkyja7uYcK3WDNoBNHVLonf9YDtm/go-libp2p/p2p/protocol"
+	peer "gx/ipfs/QmQGwpJy9P4yXZySmqkZEXCmbBpJUb8xntCv8Ca4taZwDC/go-libp2p-peer"
+	metrics "gx/ipfs/QmQgQeBQxQmJdeUSaDagc8cr2ompDwGn13Cybjdtzfuaki/go-libp2p/p2p/metrics"
+	protocol "gx/ipfs/QmQgQeBQxQmJdeUSaDagc8cr2ompDwGn13Cybjdtzfuaki/go-libp2p/p2p/protocol"
 	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
-	peer "gx/ipfs/QmbyvM8zRFDkbFdYyt1MnevUMJ62SiSGbfDFZ3Z8nkrzr4/go-libp2p-peer"
 )
 
 var StatsCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline:          "Query ipfs statistics.",
-		Synopsis:         "ipfs stats <command>",
-		ShortDescription: `'ipfs stats' is a set of commands to help look at statistics for your ipfs node.`,
-		LongDescription:  `'ipfs stats' is a set of commands to help look at statistics for your ipfs node.`,
+		Tagline:  "Query ipfs statistics.",
+		Synopsis: "ipfs stats <command>",
+		ShortDescription: `'ipfs stats' is a set of commands to help look at statistics
+for your ipfs node.
+`,
+		LongDescription: `'ipfs stats' is a set of commands to help look at statistics
+for your ipfs node.`,
 	},
 
 	Subcommands: map[string]*cmds.Command{
@@ -31,19 +34,22 @@ var StatsCmd = &cmds.Command{
 
 var statBwCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline:  "Print ipfs bandwidth information.",
-		Synopsis: "ipfs stats bw [--peer <peerId> | -p] [--proto <protocol> | -t] [--poll] [--interval <timeInterval> | -i]",
+		Tagline: "Print ipfs bandwidth information.",
+		Synopsis: `ipfs stats bw [--peer <peerId> | -p] [--proto <protocol> | -t] [--poll]
+[--interval <timeInterval> | -i]
+		`,
 		ShortDescription: `'ipfs stats bw' prints bandwidth information for the ipfs daemon.
 It displays: TotalIn, TotalOut, RateIn, RateOut.
 		`,
 		LongDescription: `'ipfs stats bw' prints bandwidth information for the ipfs daemon.
 It displays: TotalIn, TotalOut, RateIn, RateOut.
 
-By default, overall bandwidth and all protocols are shown. To limit bandwidth to
-a particular peer, use the 'peer' option along with that peer's multihash id. To
-specify a specific protocol, use the 'proto' option. The 'peer' and 'proto'
-options cannot be specified simultaneously. The protocols that be queried using
-this method are outlined in the specification: https://github.com/ipfs/specs/blob/master/libp2p/7-properties.md#757-protocol-multicodecs
+By default, overall bandwidth and all protocols are shown. To limit bandwidth
+to a particular peer, use the 'peer' option along with that peer's multihash
+id. To specify a specific protocol, use the 'proto' option. The 'peer' and
+'proto' options cannot be specified simultaneously. The protocols that are
+queried using this method are outlined in the specification:
+https://github.com/ipfs/specs/blob/master/libp2p/7-properties.md#757-protocol-multicodecs
 
 Example protocol options:
   - /ipfs/id/1.0.0

@@ -24,9 +24,9 @@ import (
 	"github.com/ipfs/go-ipfs/core/corerouting"
 	nodeMount "github.com/ipfs/go-ipfs/fuse/node"
 	fsrepo "github.com/ipfs/go-ipfs/repo/fsrepo"
-	conn "gx/ipfs/QmVL44QeoQDTYK8RVdpkyja7uYcK3WDNoBNHVLonf9YDtm/go-libp2p/p2p/net/conn"
+	conn "gx/ipfs/QmQgQeBQxQmJdeUSaDagc8cr2ompDwGn13Cybjdtzfuaki/go-libp2p/p2p/net/conn"
+	pstore "gx/ipfs/QmZ62t46e9p7vMYqCmptwQC1RhRv5cpQ5cwoqYspedaXyq/go-libp2p-peerstore"
 	util "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
-	peer "gx/ipfs/QmbyvM8zRFDkbFdYyt1MnevUMJ62SiSGbfDFZ3Z8nkrzr4/go-libp2p-peer"
 	prometheus "gx/ipfs/QmdhsRK1EK2fvAz2i2SH5DEfkL6seDuyMYEsxKa9Braim3/client_golang/prometheus"
 )
 
@@ -42,6 +42,7 @@ const (
 	unencryptTransportKwd     = "disable-transport-encryption"
 	enableGCKwd               = "enable-gc"
 	adjustFDLimitKwd          = "manage-fdlimit"
+	offlineKwd                = "offline"
 	// apiAddrKwd    = "address-api"
 	// swarmAddrKwd  = "address-swarm"
 )
@@ -109,8 +110,9 @@ second signal.
 
 IPFS_PATH environment variable
 
-ipfs uses a repository in the local file system. By default, the repo is located
-at ~/.ipfs. To change the repo location, set the $IPFS_PATH environment variable:
+ipfs uses a repository in the local file system. By default, the repo is
+located at ~/.ipfs. To change the repo location, set the $IPFS_PATH
+environment variable:
 
     export IPFS_PATH=/path/to/ipfsrepo
 
@@ -120,8 +122,9 @@ Previously, IPFS used an environment variable as seen below:
 
    export API_ORIGIN="http://localhost:8888/"
 
-This is deprecated. It is still honored in this version, but will be removed in a
-future version, along with this notice. Please move to setting the HTTP Headers.
+This is deprecated. It is still honored in this version, but will be removed
+in a future version, along with this notice. Please move to setting the HTTP
+Headers.
 `,
 	},
 
@@ -136,6 +139,7 @@ future version, along with this notice. Please move to setting the HTTP Headers.
 		cmds.BoolOption(unencryptTransportKwd, "Disable transport encryption (for debugging protocols)").Default(false),
 		cmds.BoolOption(enableGCKwd, "Enable automatic periodic repo garbage collection").Default(false),
 		cmds.BoolOption(adjustFDLimitKwd, "Check and raise file descriptor limits if needed").Default(false),
+		cmds.BoolOption(offlineKwd, "Run offline. Do not connect to the rest of the network but provide local API.").Default(false),
 
 		// TODO: add way to override addresses. tricky part: updating the config if also --init.
 		// cmds.StringOption(apiAddrKwd, "Address for the daemon rpc API (overrides config)"),
@@ -226,9 +230,10 @@ func daemonFunc(req cmds.Request, res cmds.Response) {
 
 	// Start assembling node config
 	ncfg := &core.BuildCfg{
-		Online: true,
-		Repo:   repo,
+		Repo: repo,
 	}
+	offline, _, _ := req.Option(offlineKwd).Bool()
+	ncfg.Online = !offline
 
 	routingOption, _, err := req.Option(routingOptionKwd).String()
 	if err != nil {
@@ -242,9 +247,9 @@ func daemonFunc(req cmds.Request, res cmds.Response) {
 			repo.Close() // because ownership hasn't been transferred to the node
 			return
 		}
-		var infos []peer.PeerInfo
+		var infos []pstore.PeerInfo
 		for _, addr := range servers {
-			infos = append(infos, peer.PeerInfo{
+			infos = append(infos, pstore.PeerInfo{
 				ID:    addr.ID(),
 				Addrs: []ma.Multiaddr{addr.Transport()},
 			})
@@ -416,6 +421,10 @@ func serveHTTPApi(req cmds.Request) (error, <-chan error) {
 
 // printSwarmAddrs prints the addresses of the host
 func printSwarmAddrs(node *core.IpfsNode) {
+	if !node.OnlineMode() {
+		fmt.Println("Swarm not listening, running in offline mode.")
+		return
+	}
 	var addrs []string
 	for _, addr := range node.PeerHost.Addrs() {
 		addrs = append(addrs, addr.String())

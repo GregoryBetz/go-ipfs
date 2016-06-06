@@ -12,8 +12,9 @@ import (
 	notif "github.com/ipfs/go-ipfs/notifications"
 	path "github.com/ipfs/go-ipfs/path"
 	ipdht "github.com/ipfs/go-ipfs/routing/dht"
+	peer "gx/ipfs/QmQGwpJy9P4yXZySmqkZEXCmbBpJUb8xntCv8Ca4taZwDC/go-libp2p-peer"
+	pstore "gx/ipfs/QmZ62t46e9p7vMYqCmptwQC1RhRv5cpQ5cwoqYspedaXyq/go-libp2p-peerstore"
 	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
-	peer "gx/ipfs/QmbyvM8zRFDkbFdYyt1MnevUMJ62SiSGbfDFZ3Z8nkrzr4/go-libp2p-peer"
 )
 
 var ErrNotDHT = errors.New("routing service is not a DHT")
@@ -172,7 +173,7 @@ var findProvidersDhtCmd = &cmds.Command{
 				np := p
 				notif.PublishQueryEvent(ctx, &notif.QueryEvent{
 					Type:      notif.Provider,
-					Responses: []*peer.PeerInfo{&np},
+					Responses: []*pstore.PeerInfo{&np},
 				})
 			}
 		}()
@@ -283,7 +284,7 @@ var findPeerDhtCmd = &cmds.Command{
 
 			notif.PublishQueryEvent(ctx, &notif.QueryEvent{
 				Type:      notif.FinalPeer,
-				Responses: []*peer.PeerInfo{&pi},
+				Responses: []*pstore.PeerInfo{&pi},
 			})
 		}()
 	},
@@ -331,7 +332,11 @@ var getValueDhtCmd = &cmds.Command{
 		ShortDescription: `
 Outputs the best value for the given key.
 
-There may be several different values for a given key stored in the DHT; in this context 'best' means the record that is most desirable. There is no one metric for 'best': it depends entirely on the key type. For IPNS, 'best' is the record that is both valid and has the highest sequence number (freshest). Different key types can specify other 'best' rules.
+There may be several different values for a given key stored in the DHT; in
+this context 'best' means the record that is most desirable. There is no one
+metric for 'best': it depends entirely on the key type. For IPNS, 'best' is
+the record that is both valid and has the highest sequence number (freshest).
+Different key types can specify other 'best' rules.
 `,
 	},
 
@@ -434,11 +439,17 @@ var putValueDhtCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
 		Tagline: "Write a key/value pair to the DHT.",
 		ShortDescription: `
-Given a key of the form /foo/bar and a value of any form, this will write that value to the DHT with that key.
+Given a key of the form /foo/bar and a value of any form, this will write that
+value to the DHT with that key.
 
-Keys have two parts: a keytype (foo) and the key name (bar). IPNS uses the /ipns keytype, and expects the key name to be a Peer ID. IPNS entries are specifically formatted (protocol buffer).
+Keys have two parts: a keytype (foo) and the key name (bar). IPNS uses the
+/ipns keytype, and expects the key name to be a Peer ID. IPNS entries are
+specifically formatted (protocol buffer).
 
-You may only use keytypes that are supported in your ipfs binary: currently this is only /ipns. Unless you have a relatively deep understanding of the go-ipfs DHT internals, you likely want to be using 'ipfs name publish' instead of this.
+You may only use keytypes that are supported in your ipfs binary: currently
+this is only /ipns. Unless you have a relatively deep understanding of the
+go-ipfs DHT internals, you likely want to be using 'ipfs name publish' instead
+of this.
 
 Value is arbitrary text. Standard input can be used to provide value.
 

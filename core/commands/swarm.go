@@ -10,8 +10,8 @@ import (
 
 	cmds "github.com/ipfs/go-ipfs/commands"
 	iaddr "github.com/ipfs/go-ipfs/thirdparty/ipfsaddr"
-	swarm "gx/ipfs/QmVL44QeoQDTYK8RVdpkyja7uYcK3WDNoBNHVLonf9YDtm/go-libp2p/p2p/net/swarm"
-	peer "gx/ipfs/QmbyvM8zRFDkbFdYyt1MnevUMJ62SiSGbfDFZ3Z8nkrzr4/go-libp2p-peer"
+	swarm "gx/ipfs/QmQgQeBQxQmJdeUSaDagc8cr2ompDwGn13Cybjdtzfuaki/go-libp2p/p2p/net/swarm"
+	pstore "gx/ipfs/QmZ62t46e9p7vMYqCmptwQC1RhRv5cpQ5cwoqYspedaXyq/go-libp2p-peerstore"
 
 	mafilter "gx/ipfs/QmUaRHbB7pUwj5mS9BS4CMvBiW48MpaH2wbGxeWfFhhHxK/multiaddr-filter"
 	ma "gx/ipfs/QmYzDkkgAEmrcNzFCiYo6L1dTX4EAG1gZkbtdbd9trL4vd/go-multiaddr"
@@ -260,12 +260,13 @@ var swarmDisconnectCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
 		Tagline: "Close connection to a given address.",
 		ShortDescription: `
-'ipfs swarm disconnect' closes a connection to a peer address. The address format
-is an ipfs multiaddr:
+'ipfs swarm disconnect' closes a connection to a peer address. The address
+format is an ipfs multiaddr:
 
 ipfs swarm disconnect /ip4/104.131.131.82/tcp/4001/ipfs/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ
 
-The disconnect is not permanent; if ipfs needs to talk to that address later, it will reconnect.
+The disconnect is not permanent; if ipfs needs to talk to that address later,
+it will reconnect.
 `,
 	},
 	Arguments: []cmds.Argument{
@@ -354,14 +355,14 @@ func parseAddresses(addrs []string) (iaddrs []iaddr.IPFSAddr, err error) {
 
 // peersWithAddresses is a function that takes in a slice of string peer addresses
 // (multiaddr + peerid) and returns a slice of properly constructed peers
-func peersWithAddresses(addrs []string) (pis []peer.PeerInfo, err error) {
+func peersWithAddresses(addrs []string) (pis []pstore.PeerInfo, err error) {
 	iaddrs, err := parseAddresses(addrs)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, iaddr := range iaddrs {
-		pis = append(pis, peer.PeerInfo{
+		pis = append(pis, pstore.PeerInfo{
 			ID:    iaddr.ID(),
 			Addrs: []ma.Multiaddr{iaddr.Transport()},
 		})
@@ -373,10 +374,11 @@ var swarmFiltersCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
 		Tagline: "Manipulate address filters.",
 		ShortDescription: `
-'ipfs swarm filters' will list out currently applied filters. Its subcommands can be used
-to add or remove said filters. Filters are specified using the multiaddr-filter format:
+'ipfs swarm filters' will list out currently applied filters. Its subcommands
+can be used to add or remove said filters. Filters are specified using the
+multiaddr-filter format:
 
-example:
+Example:
 
     /ip4/192.168.0.0/ipcidr/16
 

@@ -33,7 +33,7 @@ TEST_TESTS_DIR=$(dirname "$TEST_SCRIPTS_DIR")
 APP_ROOT_DIR=$(dirname "$TEST_TESTS_DIR")
 
 test_expect_success "docker image build succeeds" '
-	docker_build "$TEST_TESTS_DIR/Dockerfile" "$APP_ROOT_DIR" >actual ||
+	docker_build "$TEST_TESTS_DIR/../Dockerfile.fast" "$APP_ROOT_DIR" >actual ||
 	test_fsh echo "TEST_TESTS_DIR: $TEST_TESTS_DIR" ||
 	test_fsh echo "APP_ROOT_DIR : $APP_ROOT_DIR" ||
 	test_fsh cat actual
@@ -70,7 +70,7 @@ test_expect_success "version CurrentCommit is set" '
 	docker_exec "$DOC_ID" "wget --retry-connrefused --waitretry=1 --timeout=30 -t 30 \
 		-q -O - http://localhost:8080/version" | grep Commit | cut -d" " -f2 >actual &&
 	docker_exec "$DOC_ID" "ipfs version --commit" | cut -d- -f2 >expected &&
-	[ "$(cat expected | wc -c)" -gt "1" ] && # check there actually is a commit set
+	test -s expected && # check there actually is a commit set
 	test_cmp expected actual
 '
 
