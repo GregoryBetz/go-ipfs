@@ -8,19 +8,6 @@ test_description="Test add and cat commands"
 
 . lib/test-lib.sh
 
-client_err_add() {
-    printf "$@\n\n"
-    echo 'USAGE
-  ipfs add <path>... - Add a file to ipfs.
-
-  Adds contents of <path> to ipfs. Use -r to add directories.
-  Note that directories are added recursively, to form the ipfs
-  MerkleDAG.
-
-Use '"'"'ipfs add --help'"'"' for more information about this command.
-'
-}
-
 test_add_cat_file() {
     test_expect_success "ipfs add succeeds" '
     	echo "Hello Worlds!" >mountdir/hello.txt &&
@@ -176,9 +163,10 @@ test_add_named_pipe() {
     test_expect_success "useful error message when adding a named pipe" '
         mkfifo named-pipe &&
 	    test_expect_code 1 ipfs add named-pipe 2>actual &&
-        client_err_add "Error: Unrecognized file type for named-pipe: $(generic_stat named-pipe)" >expected &&
         rm named-pipe &&
-	    test_cmp expected actual
+        grep "Error: Unrecognized file type for named-pipe: $(generic_stat named-pipe)" actual &&
+        grep USAGE actual &&
+        grep "ipfs add" actual
     '
 
     test_expect_success "useful error message when recursively adding a named pipe" '
@@ -223,7 +211,7 @@ test_expect_success "ipfs cat output looks good" '
 	test_cmp expected actual
 '
 
-test_expect_success "ipfs cat accept hash from stdin" '
+test_expect_success "ipfs cat accept hash from built input" '
 	echo "$HASH" | ipfs cat >actual
 '
 
@@ -279,11 +267,11 @@ test_expect_success "'ipfs add' output looks good" '
 	test_cmp expected actual
 '
 
-test_expect_success "'ipfs cat' with stdin input succeeds" '
+test_expect_success "'ipfs cat' with built input succeeds" '
 	echo "$HASH" | ipfs cat >actual
 '
 
-test_expect_success "ipfs cat with stdin input output looks good" '
+test_expect_success "ipfs cat with built input output looks good" '
 	printf "Hello Neptune!\nHello Pluton!" >expected &&
 	test_cmp expected actual
 '
@@ -330,7 +318,7 @@ test_expect_success "'ipfs add -rn' output looks good" '
 	test_cmp expected actual
 '
 
-test_expect_success "ipfs cat accept many hashes from stdin" '
+test_expect_success "ipfs cat accept many hashes from built input" '
 	{ echo "$MARS"; echo "$VENUS"; } | ipfs cat >actual
 '
 
@@ -347,27 +335,9 @@ test_expect_success "ipfs cat output looks good" '
 	test_cmp expected actual
 '
 
-test_expect_success "ipfs cat with both arg and stdin" '
-	echo "$MARS" | ipfs cat "$VENUS" >actual
-'
-
-test_expect_success "ipfs cat output looks good" '
-	cat mountdir/planets/venus.txt >expected &&
-	test_cmp expected actual
-'
-
-test_expect_success "ipfs cat with two args and stdin" '
-	echo "$MARS" | ipfs cat "$VENUS" "$VENUS" >actual
-'
-
-test_expect_success "ipfs cat output looks good" '
-	cat mountdir/planets/venus.txt mountdir/planets/venus.txt >expected &&
-	test_cmp expected actual
-'
-
 test_expect_success "go-random is installed" '
-    	type random
-    '
+    type random
+'
 
 test_add_cat_5MB
 

@@ -9,18 +9,18 @@ import (
 	"testing"
 	"time"
 
-	ds "github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/ipfs/go-datastore"
-	dssync "github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/ipfs/go-datastore/sync"
 	key "github.com/ipfs/go-ipfs/blocks/key"
 	routing "github.com/ipfs/go-ipfs/routing"
 	record "github.com/ipfs/go-ipfs/routing/record"
 	ci "github.com/ipfs/go-ipfs/thirdparty/testutil/ci"
 	travisci "github.com/ipfs/go-ipfs/thirdparty/testutil/ci/travis"
+	ds "gx/ipfs/QmfQzVugPq1w5shWRcLWSeiHF4a2meBX7yVD8Vw7GWJM9o/go-datastore"
+	dssync "gx/ipfs/QmfQzVugPq1w5shWRcLWSeiHF4a2meBX7yVD8Vw7GWJM9o/go-datastore/sync"
 
-	peer "gx/ipfs/QmQGwpJy9P4yXZySmqkZEXCmbBpJUb8xntCv8Ca4taZwDC/go-libp2p-peer"
-	netutil "gx/ipfs/QmQgQeBQxQmJdeUSaDagc8cr2ompDwGn13Cybjdtzfuaki/go-libp2p/p2p/test/util"
+	pstore "gx/ipfs/QmQdnfvZQuhdT93LNc5bos52wAmdr3G2p6G8teLJMEN32P/go-libp2p-peerstore"
+	peer "gx/ipfs/QmRBqJF7hb8ZSpRcMwUt8hNhydWcxGEhtk81HKq6oUwKvs/go-libp2p-peer"
+	netutil "gx/ipfs/QmVCe3SNMjkcPgnpFhZs719dheq6xE7gJwjzV7aWcUM4Ms/go-libp2p/p2p/test/util"
 	ma "gx/ipfs/QmYzDkkgAEmrcNzFCiYo6L1dTX4EAG1gZkbtdbd9trL4vd/go-multiaddr"
-	pstore "gx/ipfs/QmZ62t46e9p7vMYqCmptwQC1RhRv5cpQ5cwoqYspedaXyq/go-libp2p-peerstore"
 	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
 )
@@ -56,10 +56,24 @@ func setupDHTS(ctx context.Context, n int, t *testing.T) ([]ma.Multiaddr, []peer
 	dhts := make([]*IpfsDHT, n)
 	peers := make([]peer.ID, n)
 
+	sanityAddrsMap := make(map[string]struct{})
+	sanityPeersMap := make(map[string]struct{})
+
 	for i := 0; i < n; i++ {
 		dhts[i] = setupDHT(ctx, t)
 		peers[i] = dhts[i].self
 		addrs[i] = dhts[i].peerstore.Addrs(dhts[i].self)[0]
+
+		if _, lol := sanityAddrsMap[addrs[i].String()]; lol {
+			t.Fatal("While setting up DHTs address got duplicated.")
+		} else {
+			sanityAddrsMap[addrs[i].String()] = struct{}{}
+		}
+		if _, lol := sanityPeersMap[peers[i].String()]; lol {
+			t.Fatal("While setting up DHTs peerid got duplicated.")
+		} else {
+			sanityPeersMap[peers[i].String()] = struct{}{}
+		}
 	}
 
 	return addrs, peers, dhts
@@ -200,7 +214,7 @@ func TestProvides(t *testing.T) {
 			t.Fatal(err)
 		}
 		if !bytes.Equal(bits.GetValue(), v) {
-			t.Fatal("didn't store the right bits (%s, %s)", k, v)
+			t.Fatalf("didn't store the right bits (%s, %s)", k, v)
 		}
 	}
 
@@ -275,7 +289,7 @@ func waitForWellFormedTables(t *testing.T, dhts []*IpfsDHT, minPeers, avgPeers i
 
 func printRoutingTables(dhts []*IpfsDHT) {
 	// the routing tables should be full now. let's inspect them.
-	fmt.Println("checking routing table of %d", len(dhts))
+	fmt.Printf("checking routing table of %d\n", len(dhts))
 	for _, dht := range dhts {
 		fmt.Printf("checking routing table of %s\n", dht.self)
 		dht.routingTable.Print()
@@ -473,7 +487,7 @@ func TestProvidesMany(t *testing.T) {
 			t.Fatal(err)
 		}
 		if !bytes.Equal(bits.GetValue(), v) {
-			t.Fatal("didn't store the right bits (%s, %s)", k, v)
+			t.Fatalf("didn't store the right bits (%s, %s)", k, v)
 		}
 
 		t.Logf("announcing provider for %s", k)

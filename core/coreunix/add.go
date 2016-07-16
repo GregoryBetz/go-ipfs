@@ -1,15 +1,12 @@
 package coreunix
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	gopath "path"
 
-	ds "github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/ipfs/go-datastore"
-	syncds "github.com/ipfs/go-ipfs/Godeps/_workspace/src/github.com/ipfs/go-datastore/sync"
 	bstore "github.com/ipfs/go-ipfs/blocks/blockstore"
 	key "github.com/ipfs/go-ipfs/blocks/key"
 	bserv "github.com/ipfs/go-ipfs/blockservice"
@@ -19,18 +16,18 @@ import (
 	mfs "github.com/ipfs/go-ipfs/mfs"
 	"github.com/ipfs/go-ipfs/pin"
 	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	ds "gx/ipfs/QmfQzVugPq1w5shWRcLWSeiHF4a2meBX7yVD8Vw7GWJM9o/go-datastore"
+	syncds "gx/ipfs/QmfQzVugPq1w5shWRcLWSeiHF4a2meBX7yVD8Vw7GWJM9o/go-datastore/sync"
 
 	bs "github.com/ipfs/go-ipfs/blocks/blockstore"
 	"github.com/ipfs/go-ipfs/commands/files"
 	core "github.com/ipfs/go-ipfs/core"
 	dag "github.com/ipfs/go-ipfs/merkledag"
 	unixfs "github.com/ipfs/go-ipfs/unixfs"
-	logging "gx/ipfs/QmaDNZ4QMdBdku1YZWBysufYyoQt1negQGNav6PLYarbY8/go-log"
+	logging "gx/ipfs/QmNQynaz7qfriSUJkiEZUrm2Wen1u3Kj9goZzWtrPyu7XR/go-log"
 )
 
 var log = logging.Logger("coreunix")
-
-var folderData = unixfs.FolderPBData()
 
 // how many bytes of progress to wait before sending a progress update message
 const progressReaderIncrement = 1024 * 256
@@ -68,7 +65,7 @@ type AddedObject struct {
 }
 
 func NewAdder(ctx context.Context, p pin.Pinner, bs bstore.GCBlockstore, ds dag.DAGService) (*Adder, error) {
-	mr, err := mfs.NewRoot(ctx, ds, newDirNode(), nil)
+	mr, err := mfs.NewRoot(ctx, ds, unixfs.EmptyDirNode(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -107,6 +104,10 @@ type Adder struct {
 	mr         *mfs.Root
 	unlocker   bs.Unlocker
 	tempRoot   key.Key
+}
+
+func (adder *Adder) SetMfsRoot(r *mfs.Root) {
+	adder.mr = r
 }
 
 // Perform the actual add & pin locally, outputting results to reader
@@ -214,34 +215,32 @@ func (adder *Adder) Finalize() (*dag.Node, error) {
 	return root.GetNode()
 }
 
-func (adder *Adder) outputDirs(path string, fs mfs.FSNode) error {
-	nd, err := fs.GetNode()
-	if err != nil {
-		return err
-	}
-
-	if !bytes.Equal(nd.Data, folderData) || fs.Type() != mfs.TDir {
+func (adder *Adder) outputDirs(path string, fsn mfs.FSNode) error {
+	switch fsn := fsn.(type) {
+	case *mfs.File:
 		return nil
-	}
+	case *mfs.Directory:
+		for _, name := range fsn.ListNames() {
+			child, err := fsn.Child(name)
+			if err != nil {
+				return err
+			}
 
-	dir, ok := fs.(*mfs.Directory)
-	if !ok {
-		return fmt.Errorf("received FSNode of type TDir that was not a Directory")
-	}
-
-	for _, name := range dir.ListNames() {
-		child, err := dir.Child(name)
+			childpath := gopath.Join(path, name)
+			err = adder.outputDirs(childpath, child)
+			if err != nil {
+				return err
+			}
+		}
+		nd, err := fsn.GetNode()
 		if err != nil {
 			return err
 		}
 
-		err = adder.outputDirs(gopath.Join(path, name), child)
-		if err != nil {
-			return err
-		}
+		return outputDagnode(adder.Out, path, nd)
+	default:
+		return fmt.Errorf("unrecognized fsn type: %#v", fsn)
 	}
-
-	return outputDagnode(adder.Out, path, nd)
 }
 
 // Add builds a merkledag from the a reader, pinning all objects to the local
@@ -391,7 +390,7 @@ func (adder *Adder) addFile(file files.File) error {
 			return err
 		}
 
-		dagnode := &dag.Node{Data: sdata}
+		dagnode := dag.NodeWithData(sdata)
 		_, err = adder.dagService.Add(dagnode)
 		if err != nil {
 			return err
@@ -485,11 +484,6 @@ func NewMemoryDagService() dag.DAGService {
 	bs := bstore.NewBlockstore(syncds.MutexWrap(ds.NewMapDatastore()))
 	bsrv := bserv.New(bs, offline.Exchange(bs))
 	return dag.NewDAGService(bsrv)
-}
-
-// TODO: generalize this to more than unix-fs nodes.
-func newDirNode() *dag.Node {
-	return &dag.Node{Data: unixfs.FolderPBData()}
 }
 
 // from core/commands/object.go

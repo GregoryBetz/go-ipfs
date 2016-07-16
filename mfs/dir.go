@@ -121,7 +121,7 @@ func (d *Directory) childNode(name string) (FSNode, error) {
 
 // cacheNode caches a node into d.childDirs or d.files and returns the FSNode.
 func (d *Directory) cacheNode(name string, nd *dag.Node) (FSNode, error) {
-	i, err := ft.FromBytes(nd.Data)
+	i, err := ft.FromBytes(nd.Data())
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +131,7 @@ func (d *Directory) cacheNode(name string, nd *dag.Node) (FSNode, error) {
 		ndir := NewDirectory(d.ctx, name, nd, d, d.dserv)
 		d.childDirs[name] = ndir
 		return ndir, nil
-	case ufspb.Data_File, ufspb.Data_Raw:
+	case ufspb.Data_File, ufspb.Data_Raw, ufspb.Data_Symlink:
 		nfi, err := NewFile(name, nd, d, d.dserv)
 		if err != nil {
 			return nil, err
@@ -268,7 +268,8 @@ func (d *Directory) Mkdir(name string) (*Directory, error) {
 		}
 	}
 
-	ndir := &dag.Node{Data: ft.FolderPBData()}
+	ndir := new(dag.Node)
+	ndir.SetData(ft.FolderPBData())
 
 	_, err = d.dserv.Add(ndir)
 	if err != nil {
@@ -338,18 +339,6 @@ func (d *Directory) AddChild(name string, nd *dag.Node) error {
 	}
 
 	d.modTime = time.Now()
-
-	if len(nd.Links) == 0 {
-		nfi, err := NewFile(name, nd, d, d.dserv)
-		if err != nil {
-			return err
-		}
-		d.files[name] = nfi
-	} else {
-		ndir := NewDirectory(d.ctx, name, nd, d, d.dserv)
-		d.childDirs[name] = ndir
-	}
-
 	return nil
 }
 
