@@ -16,15 +16,15 @@ import (
 	path "github.com/ipfs/go-ipfs/path"
 	ft "github.com/ipfs/go-ipfs/unixfs"
 
-	logging "gx/ipfs/QmNQynaz7qfriSUJkiEZUrm2Wen1u3Kj9goZzWtrPyu7XR/go-log"
-	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	context "context"
+	logging "gx/ipfs/QmSpJByNKFX1sCsHBEp3R73FL4NF6FnQTEGyNAXHm2GS52/go-log"
 )
 
 var log = logging.Logger("cmds/files")
 
 var FilesCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline: "Manipulate unixfs files.",
+		Tagline: "Interact with unixfs files.",
 		ShortDescription: `
 Files is an API for manipulating IPFS objects as if they were a unix
 filesystem.
@@ -40,7 +40,7 @@ operations.
 `,
 	},
 	Options: []cmds.Option{
-		cmds.BoolOption("flush", "f", "Flush target and ancestors after write. Default: true."),
+		cmds.BoolOption("f", "flush", "Flush target and ancestors after write.").Default(true),
 	},
 	Subcommands: map[string]*cmds.Command{
 		"read":  FilesReadCmd,
@@ -158,10 +158,7 @@ func statNode(ds dag.DAGService, fsn mfs.FSNode) (*Object, error) {
 		return nil, err
 	}
 
-	k, err := nd.Key()
-	if err != nil {
-		return nil, err
-	}
+	c := nd.Cid()
 
 	d, err := ft.FromBytes(nd.Data())
 	if err != nil {
@@ -184,7 +181,7 @@ func statNode(ds dag.DAGService, fsn mfs.FSNode) (*Object, error) {
 	}
 
 	return &Object{
-		Hash:           k.B58String(),
+		Hash:           c.String(),
 		Blocks:         len(nd.Links),
 		Size:           d.GetFilesize(),
 		CumulativeSize: cumulsize,
@@ -207,20 +204,23 @@ var FilesCpCmd = &cmds.Command{
 			return
 		}
 
-		flush, found, _ := req.Option("flush").Bool()
-		if !found {
-			flush = true
-		}
+		flush, _, _ := req.Option("flush").Bool()
 
 		src, err := checkPath(req.Arguments()[0])
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
+		src = strings.TrimRight(src, "/")
+
 		dst, err := checkPath(req.Arguments()[1])
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
+		}
+
+		if dst[len(dst)-1] == '/' {
+			dst += gopath.Base(src)
 		}
 
 		nd, err := getNodeFromPath(req.Context(), node, src)
@@ -278,9 +278,9 @@ type FilesLsOutput struct {
 
 var FilesLsCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline: "List directories.",
+		Tagline: "List directories in the local mutable namespace.",
 		ShortDescription: `
-List directories.
+List directories in the local mutable namespace.
 
 Examples:
 
@@ -579,10 +579,7 @@ stat' on the file or any of its ancestors.
 
 		create, _, _ := req.Option("create").Bool()
 		trunc, _, _ := req.Option("truncate").Bool()
-		flush, fset, _ := req.Option("flush").Bool()
-		if !fset {
-			flush = true
-		}
+		flush, _, _ := req.Option("flush").Bool()
 
 		nd, err := req.InvocContext().GetNode()
 		if err != nil {
@@ -694,10 +691,7 @@ Examples:
 			return
 		}
 
-		flush, found, _ := req.Option("flush").Bool()
-		if !found {
-			flush = true
-		}
+		flush, _, _ := req.Option("flush").Bool()
 
 		err = mfs.Mkdir(n.FilesRoot, dirtomake, dashp, flush)
 		if err != nil {

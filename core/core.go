@@ -17,32 +17,34 @@ import (
 	"time"
 
 	diag "github.com/ipfs/go-ipfs/diagnostics"
-	logging "gx/ipfs/QmNQynaz7qfriSUJkiEZUrm2Wen1u3Kj9goZzWtrPyu7XR/go-log"
-	pstore "gx/ipfs/QmQdnfvZQuhdT93LNc5bos52wAmdr3G2p6G8teLJMEN32P/go-libp2p-peerstore"
-	goprocess "gx/ipfs/QmQopLATEYMNg7dVqZRNDfeE2S1yKy8zrRh5xnYiuqeZBn/goprocess"
-	peer "gx/ipfs/QmRBqJF7hb8ZSpRcMwUt8hNhydWcxGEhtk81HKq6oUwKvs/go-libp2p-peer"
-	mamask "gx/ipfs/QmSMZwvs3n4GBikZ7hKzT17c3bk65FmyZo2JqtJ16swqCv/multiaddr-filter"
-	b58 "gx/ipfs/QmT8rehPR3F6bmwL6zjUN8XpiDBFFpMP2myPdC6ApsWfJf/go-base58"
-	ic "gx/ipfs/QmUWER4r4qMvaCnX5zREcfyiWN7cXN9g3a7fkRqNz8qWPP/go-libp2p-crypto"
-	discovery "gx/ipfs/QmVCe3SNMjkcPgnpFhZs719dheq6xE7gJwjzV7aWcUM4Ms/go-libp2p/p2p/discovery"
-	p2phost "gx/ipfs/QmVCe3SNMjkcPgnpFhZs719dheq6xE7gJwjzV7aWcUM4Ms/go-libp2p/p2p/host"
-	p2pbhost "gx/ipfs/QmVCe3SNMjkcPgnpFhZs719dheq6xE7gJwjzV7aWcUM4Ms/go-libp2p/p2p/host/basic"
-	rhost "gx/ipfs/QmVCe3SNMjkcPgnpFhZs719dheq6xE7gJwjzV7aWcUM4Ms/go-libp2p/p2p/host/routed"
-	metrics "gx/ipfs/QmVCe3SNMjkcPgnpFhZs719dheq6xE7gJwjzV7aWcUM4Ms/go-libp2p/p2p/metrics"
-	swarm "gx/ipfs/QmVCe3SNMjkcPgnpFhZs719dheq6xE7gJwjzV7aWcUM4Ms/go-libp2p/p2p/net/swarm"
-	addrutil "gx/ipfs/QmVCe3SNMjkcPgnpFhZs719dheq6xE7gJwjzV7aWcUM4Ms/go-libp2p/p2p/net/swarm/addr"
-	ping "gx/ipfs/QmVCe3SNMjkcPgnpFhZs719dheq6xE7gJwjzV7aWcUM4Ms/go-libp2p/p2p/protocol/ping"
-	ma "gx/ipfs/QmYzDkkgAEmrcNzFCiYo6L1dTX4EAG1gZkbtdbd9trL4vd/go-multiaddr"
-	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
-	ds "gx/ipfs/QmfQzVugPq1w5shWRcLWSeiHF4a2meBX7yVD8Vw7GWJM9o/go-datastore"
 
-	routing "github.com/ipfs/go-ipfs/routing"
-	dht "github.com/ipfs/go-ipfs/routing/dht"
+	context "context"
+	goprocess "gx/ipfs/QmSF8fPo3jgVBAy8fpdjjYqgG87dkJgUprRBHRd2tmfgpP/goprocess"
+	mamask "gx/ipfs/QmSMZwvs3n4GBikZ7hKzT17c3bk65FmyZo2JqtJ16swqCv/multiaddr-filter"
+	logging "gx/ipfs/QmSpJByNKFX1sCsHBEp3R73FL4NF6FnQTEGyNAXHm2GS52/go-log"
+	b58 "gx/ipfs/QmT8rehPR3F6bmwL6zjUN8XpiDBFFpMP2myPdC6ApsWfJf/go-base58"
+	floodsub "gx/ipfs/QmTgcWwxttM74AY7UYA6qMP9WpzfBEjbZntx7ZWLttRMJJ/floodsub"
+	ma "gx/ipfs/QmUAQaWbKxGCUTuoQVvvicbQNZ9APF5pDGWyAZSe93AtKH/go-multiaddr"
+	addrutil "gx/ipfs/QmVDnc2zvyQm8LhT72n22THcshvH7j3qPMnhvjerQER62T/go-addr-util"
+	metrics "gx/ipfs/QmWpTXhTkpoCDEm9twJd5Rc9jFwy61emzxneeJzrVMfjGF/go-libp2p-metrics"
+	pstore "gx/ipfs/QmXXCcQ7CLg5a81Ui9TTR35QcR4y7ZyihxwfjqaHfUVcVo/go-libp2p-peerstore"
+	cid "gx/ipfs/QmakyCk6Vnn16WEKjbkxieZmM2YLTzkFWizbmGowoYPjro/go-cid"
+	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
+	discovery "gx/ipfs/QmcRa2qn6iCmap9bjp8jAwkvYAq13AUfxdY3rrYiaJbLum/go-libp2p/p2p/discovery"
+	p2pbhost "gx/ipfs/QmcRa2qn6iCmap9bjp8jAwkvYAq13AUfxdY3rrYiaJbLum/go-libp2p/p2p/host/basic"
+	rhost "gx/ipfs/QmcRa2qn6iCmap9bjp8jAwkvYAq13AUfxdY3rrYiaJbLum/go-libp2p/p2p/host/routed"
+	ping "gx/ipfs/QmcRa2qn6iCmap9bjp8jAwkvYAq13AUfxdY3rrYiaJbLum/go-libp2p/p2p/protocol/ping"
+	p2phost "gx/ipfs/QmdML3R42PRSwnt46jSuEts9bHSqLctVYEjJqMR3UYV8ki/go-libp2p-host"
+	swarm "gx/ipfs/QmeAfPWBWDQq9qjQ5oiWhaFs7oEsfB6FyEj5VxNdc2r34q/go-libp2p-swarm"
+	peer "gx/ipfs/QmfMmLGoKzCHDN7cGgk64PJr4iipzidDRME8HABSJqvmhC/go-libp2p-peer"
+	ic "gx/ipfs/QmfWDLQjGjVe4fr5CoztYW2DYYjRysMJrFe1RCsXLPTf46/go-libp2p-crypto"
+
 	nilrouting "github.com/ipfs/go-ipfs/routing/none"
 	offroute "github.com/ipfs/go-ipfs/routing/offline"
+	dht "gx/ipfs/QmRDMP3Y9E6hZtJwcFii8F6RTUSDn67Hi2o5VFTBXNRioo/go-libp2p-kad-dht"
+	routing "gx/ipfs/QmXKuGUzLcgoQvp8M6ZEJzupWUNmx8NoqXEbYLMDjL4rjj/go-libp2p-routing"
 
 	bstore "github.com/ipfs/go-ipfs/blocks/blockstore"
-	key "github.com/ipfs/go-ipfs/blocks/key"
 	bserv "github.com/ipfs/go-ipfs/blockservice"
 	exchange "github.com/ipfs/go-ipfs/exchange"
 	bitswap "github.com/ipfs/go-ipfs/exchange/bitswap"
@@ -59,7 +61,7 @@ import (
 	repo "github.com/ipfs/go-ipfs/repo"
 	config "github.com/ipfs/go-ipfs/repo/config"
 	uio "github.com/ipfs/go-ipfs/unixfs/io"
-	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
+	u "gx/ipfs/Qmb912gdngC1UWwTkhuW8knyRbcWeu5kqkxBpveLmW8bSr/go-ipfs-util"
 )
 
 const IpnsValidatorTag = "ipns"
@@ -112,6 +114,8 @@ type IpfsNode struct {
 	Reprovider   *rp.Reprovider // the value reprovider system
 	IpnsRepub    *ipnsrp.Republisher
 
+	Floodsub *floodsub.PubSub
+
 	proc goprocess.Process
 	ctx  context.Context
 
@@ -126,7 +130,7 @@ type Mounts struct {
 	Ipns mount.Mount
 }
 
-func (n *IpfsNode) startOnlineServices(ctx context.Context, routingOption RoutingOption, hostOption HostOption, do DiscoveryOption) error {
+func (n *IpfsNode) startOnlineServices(ctx context.Context, routingOption RoutingOption, hostOption HostOption, do DiscoveryOption, pubsub bool) error {
 
 	if n.PeerHost != nil { // already online.
 		return errors.New("node already online")
@@ -169,11 +173,28 @@ func (n *IpfsNode) startOnlineServices(ctx context.Context, routingOption Routin
 	}
 
 	n.Reprovider = rp.NewReprovider(n.Routing, n.Blockstore)
-	go n.Reprovider.ProvideEvery(ctx, kReprovideFrequency)
+
+	if cfg.Reprovider.Interval != "0" {
+		interval := kReprovideFrequency
+		if cfg.Reprovider.Interval != "" {
+			dur, err := time.ParseDuration(cfg.Reprovider.Interval)
+			if err != nil {
+				return err
+			}
+
+			interval = dur
+		}
+
+		go n.Reprovider.ProvideEvery(ctx, interval)
+	}
+
+	if pubsub {
+		n.Floodsub = floodsub.NewFloodSub(ctx, peerhost)
+	}
 
 	// setup local discovery
 	if do != nil {
-		service, err := do(n.PeerHost)
+		service, err := do(ctx, n.PeerHost)
 		if err != nil {
 			log.Error("mdns error: ", err)
 		} else {
@@ -187,11 +208,11 @@ func (n *IpfsNode) startOnlineServices(ctx context.Context, routingOption Routin
 
 func setupDiscoveryOption(d config.Discovery) DiscoveryOption {
 	if d.MDNS.Enabled {
-		return func(h p2phost.Host) (discovery.Service, error) {
+		return func(ctx context.Context, h p2phost.Host) (discovery.Service, error) {
 			if d.MDNS.Interval == 0 {
 				d.MDNS.Interval = 5
 			}
-			return discovery.NewMdnsService(h, time.Duration(d.MDNS.Interval)*time.Second)
+			return discovery.NewMdnsService(ctx, h, time.Duration(d.MDNS.Interval)*time.Second)
 		}
 	}
 	return nil
@@ -474,8 +495,8 @@ func (n *IpfsNode) loadBootstrapPeers() ([]pstore.PeerInfo, error) {
 
 func (n *IpfsNode) loadFilesRoot() error {
 	dsk := ds.NewKey("/local/filesroot")
-	pf := func(ctx context.Context, k key.Key) error {
-		return n.Repo.Datastore().Put(dsk, []byte(k))
+	pf := func(ctx context.Context, c *cid.Cid) error {
+		return n.Repo.Datastore().Put(dsk, c.Bytes())
 	}
 
 	var nd *merkledag.Node
@@ -489,8 +510,12 @@ func (n *IpfsNode) loadFilesRoot() error {
 			return fmt.Errorf("failure writing to dagstore: %s", err)
 		}
 	case err == nil:
-		k := key.Key(val.([]byte))
-		nd, err = n.DAG.Get(n.Context(), k)
+		c, err := cid.Cast(val.([]byte))
+		if err != nil {
+			return err
+		}
+
+		nd, err = n.DAG.Get(n.Context(), c)
 		if err != nil {
 			return fmt.Errorf("error loading filesroot from DAG: %s", err)
 		}
@@ -621,9 +646,17 @@ func constructDHTRouting(ctx context.Context, host p2phost.Host, dstore repo.Dat
 	return dhtRouting, nil
 }
 
+func constructClientDHTRouting(ctx context.Context, host p2phost.Host, dstore repo.Datastore) (routing.IpfsRouting, error) {
+	dhtRouting := dht.NewDHTClient(ctx, host, dstore)
+	dhtRouting.Validator[IpnsValidatorTag] = namesys.IpnsRecordValidator
+	dhtRouting.Selector[IpnsValidatorTag] = namesys.IpnsSelectorFunc
+	return dhtRouting, nil
+}
+
 type RoutingOption func(context.Context, p2phost.Host, repo.Datastore) (routing.IpfsRouting, error)
 
-type DiscoveryOption func(p2phost.Host) (discovery.Service, error)
+type DiscoveryOption func(context.Context, p2phost.Host) (discovery.Service, error)
 
 var DHTOption RoutingOption = constructDHTRouting
+var DHTClientOption RoutingOption = constructClientDHTRouting
 var NilRouterOption RoutingOption = nilrouting.ConstructNilRouting

@@ -5,25 +5,27 @@ import (
 	"strings"
 	"time"
 
+	"context"
 	lru "gx/ipfs/QmVYxfoJQiZijTgPNHCHgHELvQpbsJNTg6Crmc3dQkj3yy/golang-lru"
-	mh "gx/ipfs/QmYf7ng2hG5XBtJA3tN34DQ2GUN5HNksEw1rLDkmr6vGku/go-multihash"
+	mh "gx/ipfs/QmYDds3421prZgqKbLpEK7T9Aa2eVdQ7o3YarX1LVLdP2J/go-multihash"
 	proto "gx/ipfs/QmZ4Qi3GaRbjcx28Sme5eMH7RQjGkt8wHxt2a65oLaeFEV/gogo-protobuf/proto"
-	"gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
 
-	key "github.com/ipfs/go-ipfs/blocks/key"
 	pb "github.com/ipfs/go-ipfs/namesys/pb"
 	path "github.com/ipfs/go-ipfs/path"
-	routing "github.com/ipfs/go-ipfs/routing"
-	logging "gx/ipfs/QmNQynaz7qfriSUJkiEZUrm2Wen1u3Kj9goZzWtrPyu7XR/go-log"
-	ci "gx/ipfs/QmUWER4r4qMvaCnX5zREcfyiWN7cXN9g3a7fkRqNz8qWPP/go-libp2p-crypto"
-	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
+	routing "gx/ipfs/QmXKuGUzLcgoQvp8M6ZEJzupWUNmx8NoqXEbYLMDjL4rjj/go-libp2p-routing"
+	key "gx/ipfs/QmYEoKZXHoAToWfhGF3vryhMn3WWhE1o2MasQ8uzY5iDi9/go-key"
+
+	logging "gx/ipfs/QmSpJByNKFX1sCsHBEp3R73FL4NF6FnQTEGyNAXHm2GS52/go-log"
+	cid "gx/ipfs/QmakyCk6Vnn16WEKjbkxieZmM2YLTzkFWizbmGowoYPjro/go-cid"
+	u "gx/ipfs/Qmb912gdngC1UWwTkhuW8knyRbcWeu5kqkxBpveLmW8bSr/go-ipfs-util"
+	ci "gx/ipfs/QmfWDLQjGjVe4fr5CoztYW2DYYjRysMJrFe1RCsXLPTf46/go-libp2p-crypto"
 )
 
 var log = logging.Logger("namesys")
 
 // routingResolver implements NSResolver for the main IPFS SFS-like naming
 type routingResolver struct {
-	routing routing.IpfsRouting
+	routing routing.ValueStore
 
 	cache *lru.Cache
 }
@@ -88,7 +90,7 @@ type cacheEntry struct {
 // to implement SFS-like naming on top.
 // cachesize is the limit of the number of entries in the lru cache. Setting it
 // to '0' will disable caching.
-func NewRoutingResolver(route routing.IpfsRouting, cachesize int) *routingResolver {
+func NewRoutingResolver(route routing.ValueStore, cachesize int) *routingResolver {
 	if route == nil {
 		panic("attempt to create resolver with nil routing system")
 	}
@@ -140,7 +142,7 @@ func (r *routingResolver) resolveOnce(ctx context.Context, name string) (path.Pa
 
 	resp := make(chan error, 2)
 	go func() {
-		ipnsKey := key.Key(h)
+		ipnsKey := string(h)
 		val, err := r.routing.GetValue(ctx, ipnsKey)
 		if err != nil {
 			log.Warning("RoutingResolve get failed.")
@@ -196,7 +198,7 @@ func (r *routingResolver) resolveOnce(ctx context.Context, name string) (path.Pa
 	} else {
 		// Its an old style multihash record
 		log.Warning("Detected old style multihash record")
-		p := path.FromKey(key.Key(valh))
+		p := path.FromCid(cid.NewCidV0(valh))
 		r.cacheSet(name, p, entry)
 		return p, nil
 	}

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	context "context"
 	core "github.com/ipfs/go-ipfs/core"
 	coreunix "github.com/ipfs/go-ipfs/core/coreunix"
 	namesys "github.com/ipfs/go-ipfs/namesys"
@@ -16,9 +17,8 @@ import (
 	repo "github.com/ipfs/go-ipfs/repo"
 	config "github.com/ipfs/go-ipfs/repo/config"
 	testutil "github.com/ipfs/go-ipfs/thirdparty/testutil"
-	ci "gx/ipfs/QmUWER4r4qMvaCnX5zREcfyiWN7cXN9g3a7fkRqNz8qWPP/go-libp2p-crypto"
-	id "gx/ipfs/QmVCe3SNMjkcPgnpFhZs719dheq6xE7gJwjzV7aWcUM4Ms/go-libp2p/p2p/protocol/identify"
-	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	id "gx/ipfs/QmcRa2qn6iCmap9bjp8jAwkvYAq13AUfxdY3rrYiaJbLum/go-libp2p/p2p/protocol/identify"
+	ci "gx/ipfs/QmfWDLQjGjVe4fr5CoztYW2DYYjRysMJrFe1RCsXLPTf46/go-libp2p-crypto"
 )
 
 type mockNamesys map[string]path.Path
@@ -104,7 +104,7 @@ func newTestServerAndNode(t *testing.T, ns mockNamesys) (*httptest.Server, *core
 		ts.Listener,
 		VersionOption(),
 		IPNSHostnameOption(),
-		GatewayOption("/ipfs", "/ipns"),
+		GatewayOption(false, "/ipfs", "/ipns"),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -197,10 +197,7 @@ func TestIPNSHostnameRedirect(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	k, err := dagn1.Key()
-	if err != nil {
-		t.Fatal(err)
-	}
+	k := dagn1.Key()
 	t.Logf("k: %s\n", k)
 	ns["/ipns/example.net"] = path.FromString("/ipfs/" + k.String())
 
@@ -290,10 +287,7 @@ func TestIPNSHostnameBacklinks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	k, err := dagn1.Key()
-	if err != nil {
-		t.Fatal(err)
-	}
+	k := dagn1.Key()
 	t.Logf("k: %s\n", k)
 	ns["/ipns/example.net"] = path.FromString("/ipfs/" + k.String())
 

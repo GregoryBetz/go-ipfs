@@ -1,31 +1,50 @@
 package blockstore
 
 import (
-	"github.com/ipfs/go-ipfs/blocks"
-	key "github.com/ipfs/go-ipfs/blocks/key"
-	lru "gx/ipfs/QmVYxfoJQiZijTgPNHCHgHELvQpbsJNTg6Crmc3dQkj3yy/golang-lru"
-	bloom "gx/ipfs/QmWQ2SJisXwcCLsUXLwYCKSfyExXjFRW2WbBH5sqCUnwX5/bbloom"
-	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
-	ds "gx/ipfs/QmfQzVugPq1w5shWRcLWSeiHF4a2meBX7yVD8Vw7GWJM9o/go-datastore"
-
 	"sync/atomic"
+	"time"
+
+	"github.com/ipfs/go-ipfs/blocks"
+	key "gx/ipfs/QmYEoKZXHoAToWfhGF3vryhMn3WWhE1o2MasQ8uzY5iDi9/go-key"
+
+	context "context"
+	"gx/ipfs/QmRg1gKTHzc3CZXSKzem8aR4E3TubFhbgXwfVuWnSK5CC5/go-metrics-interface"
+	bloom "gx/ipfs/QmeiMCBkYHxkDkDfnDadzz4YxY5ruL5Pj499essE4vRsGM/bbloom"
 )
 
 // bloomCached returns Blockstore that caches Has requests using Bloom filter
 // Size is size of bloom filter in bytes
-func bloomCached(bs Blockstore, ctx context.Context, bloomSize, hashCount, lruSize int) (*bloomcache, error) {
+func bloomCached(bs Blockstore, ctx context.Context, bloomSize, hashCount int) (*bloomcache, error) {
 	bl, err := bloom.New(float64(bloomSize), float64(hashCount))
 	if err != nil {
 		return nil, err
 	}
-	arc, err := lru.NewARC(lruSize)
-	if err != nil {
-		return nil, err
-	}
-	bc := &bloomcache{blockstore: bs, bloom: bl, arc: arc}
+	bc := &bloomcache{blockstore: bs, bloom: bl}
+	bc.hits = metrics.NewCtx(ctx, "bloom.hits_total",
+		"Number of cache hits in bloom cache").Counter()
+	bc.total = metrics.NewCtx(ctx, "bloom_total",
+		"Total number of requests to bloom cache").Counter()
+
 	bc.Invalidate()
 	go bc.Rebuild(ctx)
+	if metrics.Active() {
+		go func() {
+			fill := metrics.NewCtx(ctx, "bloom_fill_ratio",
+				"Ratio of bloom filter fullnes, (updated once a minute)").Gauge()
 
+			<-bc.rebuildChan
+			t := time.NewTicker(1 * time.Minute)
+			for {
+				select {
+				case <-ctx.Done():
+					t.Stop()
+					return
+				case <-t.C:
+					fill.Set(bc.bloom.FillRatio())
+				}
+			}
+		}()
+	}
 	return bc, nil
 }
 
@@ -33,14 +52,13 @@ type bloomcache struct {
 	bloom  *bloom.Bloom
 	active int32
 
-	arc *lru.ARCCache
 	// This chan is only used for testing to wait for bloom to enable
 	rebuildChan chan struct{}
 	blockstore  Blockstore
 
 	// Statistics
-	hits   uint64
-	misses uint64
+	hits  metrics.Counter
+	total metrics.Counter
 }
 
 func (b *bloomcache) Invalidate() {
@@ -84,22 +102,13 @@ func (b *bloomcache) DeleteBlock(k key.Key) error {
 		return ErrNotFound
 	}
 
-	b.arc.Remove(k) // Invalidate cache before deleting.
-	err := b.blockstore.DeleteBlock(k)
-	switch err {
-	case nil:
-		b.arc.Add(k, false)
-	case ds.ErrNotFound, ErrNotFound:
-		b.arc.Add(k, false)
-	default:
-		return err
-	}
-	return nil
+	return b.blockstore.DeleteBlock(k)
 }
 
 // if ok == false has is inconclusive
 // if ok == true then has respons to question: is it contained
 func (b *bloomcache) hasCached(k key.Key) (has bool, ok bool) {
+	b.total.Inc()
 	if k == "" {
 		// Return cache invalid so call to blockstore
 		// in case of invalid key is forwarded deeper
@@ -108,15 +117,11 @@ func (b *bloomcache) hasCached(k key.Key) (has bool, ok bool) {
 	if b.BloomActive() {
 		blr := b.bloom.HasTS([]byte(k))
 		if blr == false { // not contained in bloom is only conclusive answer bloom gives
+			b.hits.Inc()
 			return false, true
 		}
 	}
-	h, ok := b.arc.Get(k)
-	if ok {
-		return h.(bool), ok
-	} else {
-		return false, false
-	}
+	return false, false
 }
 
 func (b *bloomcache) Has(k key.Key) (bool, error) {
@@ -124,11 +129,7 @@ func (b *bloomcache) Has(k key.Key) (bool, error) {
 		return has, nil
 	}
 
-	res, err := b.blockstore.Has(k)
-	if err == nil {
-		b.arc.Add(k, res)
-	}
-	return res, err
+	return b.blockstore.Has(k)
 }
 
 func (b *bloomcache) Get(k key.Key) (blocks.Block, error) {
@@ -136,13 +137,7 @@ func (b *bloomcache) Get(k key.Key) (blocks.Block, error) {
 		return nil, ErrNotFound
 	}
 
-	bl, err := b.blockstore.Get(k)
-	if bl == nil && err == ErrNotFound {
-		b.arc.Add(k, false)
-	} else if bl != nil {
-		b.arc.Add(k, true)
-	}
-	return bl, err
+	return b.blockstore.Get(k)
 }
 
 func (b *bloomcache) Put(bl blocks.Block) error {
@@ -153,26 +148,23 @@ func (b *bloomcache) Put(bl blocks.Block) error {
 	err := b.blockstore.Put(bl)
 	if err == nil {
 		b.bloom.AddTS([]byte(bl.Key()))
-		b.arc.Add(bl.Key(), true)
 	}
 	return err
 }
 
 func (b *bloomcache) PutMany(bs []blocks.Block) error {
-	var good []blocks.Block
-	for _, block := range bs {
-		if has, ok := b.hasCached(block.Key()); !ok || (ok && !has) {
-			good = append(good, block)
-		}
-	}
+	// bloom cache gives only conclusive resulty if key is not contained
+	// to reduce number of puts we need conclusive infomration if block is contained
+	// this means that PutMany can't be improved with bloom cache so we just
+	// just do a passthrough.
 	err := b.blockstore.PutMany(bs)
-	if err == nil {
-		for _, block := range bs {
-			b.bloom.AddTS([]byte(block.Key()))
-			b.arc.Add(block.Key(), true)
-		}
+	if err != nil {
+		return err
 	}
-	return err
+	for _, bl := range bs {
+		b.bloom.AddTS([]byte(bl.Key()))
+	}
+	return nil
 }
 
 func (b *bloomcache) AllKeysChan(ctx context.Context) (<-chan key.Key, error) {

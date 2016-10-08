@@ -8,24 +8,24 @@ import (
 	"sync"
 	"time"
 
-	logging "gx/ipfs/QmNQynaz7qfriSUJkiEZUrm2Wen1u3Kj9goZzWtrPyu7XR/go-log"
-	process "gx/ipfs/QmQopLATEYMNg7dVqZRNDfeE2S1yKy8zrRh5xnYiuqeZBn/goprocess"
-	procctx "gx/ipfs/QmQopLATEYMNg7dVqZRNDfeE2S1yKy8zrRh5xnYiuqeZBn/goprocess/context"
-	peer "gx/ipfs/QmRBqJF7hb8ZSpRcMwUt8hNhydWcxGEhtk81HKq6oUwKvs/go-libp2p-peer"
-	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	key "gx/ipfs/QmYEoKZXHoAToWfhGF3vryhMn3WWhE1o2MasQ8uzY5iDi9/go-key"
 
 	blocks "github.com/ipfs/go-ipfs/blocks"
 	blockstore "github.com/ipfs/go-ipfs/blocks/blockstore"
-	key "github.com/ipfs/go-ipfs/blocks/key"
 	exchange "github.com/ipfs/go-ipfs/exchange"
 	decision "github.com/ipfs/go-ipfs/exchange/bitswap/decision"
 	bsmsg "github.com/ipfs/go-ipfs/exchange/bitswap/message"
 	bsnet "github.com/ipfs/go-ipfs/exchange/bitswap/network"
 	notifications "github.com/ipfs/go-ipfs/exchange/bitswap/notifications"
-	wantlist "github.com/ipfs/go-ipfs/exchange/bitswap/wantlist"
 	flags "github.com/ipfs/go-ipfs/flags"
 	"github.com/ipfs/go-ipfs/thirdparty/delay"
-	loggables "github.com/ipfs/go-ipfs/thirdparty/loggables"
+	loggables "gx/ipfs/QmTMy4hVSY28DdwJ9kBz6y7q6MuioFzPcpM3Ma3aPjo1i3/go-libp2p-loggables"
+
+	context "context"
+	process "gx/ipfs/QmSF8fPo3jgVBAy8fpdjjYqgG87dkJgUprRBHRd2tmfgpP/goprocess"
+	procctx "gx/ipfs/QmSF8fPo3jgVBAy8fpdjjYqgG87dkJgUprRBHRd2tmfgpP/goprocess/context"
+	logging "gx/ipfs/QmSpJByNKFX1sCsHBEp3R73FL4NF6FnQTEGyNAXHm2GS52/go-log"
+	peer "gx/ipfs/QmfMmLGoKzCHDN7cGgk64PJr4iipzidDRME8HABSJqvmhC/go-libp2p-peer"
 )
 
 var log = logging.Logger("bitswap")
@@ -88,9 +88,9 @@ func New(parent context.Context, p peer.ID, network bsnet.BitSwapNetwork,
 		notifications: notif,
 		engine:        decision.NewEngine(ctx, bstore), // TODO close the engine with Close() method
 		network:       network,
-		findKeys:      make(chan *wantlist.Entry, sizeBatchRequestChan),
+		findKeys:      make(chan *blockRequest, sizeBatchRequestChan),
 		process:       px,
-		newBlocks:     make(chan blocks.Block, HasBlockBufferSize),
+		newBlocks:     make(chan key.Key, HasBlockBufferSize),
 		provideKeys:   make(chan key.Key, provideKeysBufferSize),
 		wm:            NewWantManager(ctx, network),
 	}
@@ -131,13 +131,13 @@ type Bitswap struct {
 	notifications notifications.PubSub
 
 	// send keys to a worker to find and connect to providers for them
-	findKeys chan *wantlist.Entry
+	findKeys chan *blockRequest
 
 	engine *decision.Engine
 
 	process process.Process
 
-	newBlocks chan blocks.Block
+	newBlocks chan key.Key
 
 	provideKeys chan key.Key
 
@@ -148,8 +148,8 @@ type Bitswap struct {
 }
 
 type blockRequest struct {
-	key key.Key
-	ctx context.Context
+	Key key.Key
+	Ctx context.Context
 }
 
 // GetBlock attempts to retrieve a particular block from peers within the
@@ -205,6 +205,10 @@ func (bs *Bitswap) WantlistForPeer(p peer.ID) []key.Key {
 	return out
 }
 
+func (bs *Bitswap) LedgerForPeer(p peer.ID) *decision.Receipt {
+	return bs.engine.LedgerForPeer(p)
+}
+
 // GetBlocks returns a channel where the caller may receive blocks that
 // correspond to the provided |keys|. Returns an error if BitSwap is unable to
 // begin this request within the deadline enforced by the context.
@@ -235,21 +239,58 @@ func (bs *Bitswap) GetBlocks(ctx context.Context, keys []key.Key) (<-chan blocks
 	// NB: Optimization. Assumes that providers of key[0] are likely to
 	// be able to provide for all keys. This currently holds true in most
 	// every situation. Later, this assumption may not hold as true.
-	req := &wantlist.Entry{
+	req := &blockRequest{
 		Key: keys[0],
 		Ctx: ctx,
 	}
+
+	remaining := make(map[key.Key]struct{})
+	for _, k := range keys {
+		remaining[k] = struct{}{}
+	}
+
+	out := make(chan blocks.Block)
+	go func() {
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		defer close(out)
+		defer func() {
+			var toCancel []key.Key
+			for k, _ := range remaining {
+				toCancel = append(toCancel, k)
+			}
+			bs.CancelWants(toCancel)
+		}()
+		for {
+			select {
+			case blk, ok := <-promise:
+				if !ok {
+					return
+				}
+
+				delete(remaining, blk.Key())
+				select {
+				case out <- blk:
+				case <-ctx.Done():
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
 	select {
 	case bs.findKeys <- req:
-		return promise, nil
+		return out, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
 }
 
 // CancelWant removes a given key from the wantlist
-func (bs *Bitswap) CancelWants(ks []key.Key) {
-	bs.wm.CancelWants(ks)
+func (bs *Bitswap) CancelWants(keys []key.Key) {
+	bs.wm.CancelWants(keys)
 }
 
 // HasBlock announces the existance of a block to this bitswap service. The
@@ -261,35 +302,28 @@ func (bs *Bitswap) HasBlock(blk blocks.Block) error {
 	default:
 	}
 
-	err := bs.tryPutBlock(blk, 4) // attempt to store block up to four times
+	err := bs.blockstore.Put(blk)
 	if err != nil {
 		log.Errorf("Error writing block to datastore: %s", err)
 		return err
 	}
 
+	// NOTE: There exists the possiblity for a race condition here.  If a user
+	// creates a node, then adds it to the dagservice while another goroutine
+	// is waiting on a GetBlock for that object, they will receive a reference
+	// to the same node. We should address this soon, but i'm not going to do
+	// it now as it requires more thought and isnt causing immediate problems.
 	bs.notifications.Publish(blk)
 
 	bs.engine.AddBlock(blk)
 
 	select {
-	case bs.newBlocks <- blk:
+	case bs.newBlocks <- blk.Key():
 		// send block off to be reprovided
 	case <-bs.process.Closing():
 		return bs.process.Close()
 	}
 	return nil
-}
-
-func (bs *Bitswap) tryPutBlock(blk blocks.Block, attempts int) error {
-	var err error
-	for i := 0; i < attempts; i++ {
-		if err = bs.blockstore.Put(blk); err == nil {
-			break
-		}
-
-		time.Sleep(time.Millisecond * time.Duration(400*(i+1)))
-	}
-	return err
 }
 
 func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg.BitSwapMessage) {
@@ -351,7 +385,7 @@ func (bs *Bitswap) updateReceiveCounters(b blocks.Block) error {
 	}
 	if err == nil && has {
 		bs.dupBlocksRecvd++
-		bs.dupDataRecvd += uint64(len(b.Data()))
+		bs.dupDataRecvd += uint64(len(b.RawData()))
 	}
 
 	if has {

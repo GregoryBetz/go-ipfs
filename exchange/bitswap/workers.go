@@ -1,17 +1,16 @@
 package bitswap
 
 import (
+	"math/rand"
 	"sync"
 	"time"
 
-	process "gx/ipfs/QmQopLATEYMNg7dVqZRNDfeE2S1yKy8zrRh5xnYiuqeZBn/goprocess"
-	procctx "gx/ipfs/QmQopLATEYMNg7dVqZRNDfeE2S1yKy8zrRh5xnYiuqeZBn/goprocess/context"
-	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
-
-	key "github.com/ipfs/go-ipfs/blocks/key"
-	wantlist "github.com/ipfs/go-ipfs/exchange/bitswap/wantlist"
-	logging "gx/ipfs/QmNQynaz7qfriSUJkiEZUrm2Wen1u3Kj9goZzWtrPyu7XR/go-log"
-	peer "gx/ipfs/QmRBqJF7hb8ZSpRcMwUt8hNhydWcxGEhtk81HKq6oUwKvs/go-libp2p-peer"
+	context "context"
+	process "gx/ipfs/QmSF8fPo3jgVBAy8fpdjjYqgG87dkJgUprRBHRd2tmfgpP/goprocess"
+	procctx "gx/ipfs/QmSF8fPo3jgVBAy8fpdjjYqgG87dkJgUprRBHRd2tmfgpP/goprocess/context"
+	logging "gx/ipfs/QmSpJByNKFX1sCsHBEp3R73FL4NF6FnQTEGyNAXHm2GS52/go-log"
+	key "gx/ipfs/QmYEoKZXHoAToWfhGF3vryhMn3WWhE1o2MasQ8uzY5iDi9/go-key"
+	peer "gx/ipfs/QmfMmLGoKzCHDN7cGgk64PJr4iipzidDRME8HABSJqvmhC/go-libp2p-peer"
 )
 
 var TaskWorkerCount = 8
@@ -128,16 +127,17 @@ func (bs *Bitswap) provideCollector(ctx context.Context) {
 
 	for {
 		select {
-		case blk, ok := <-bs.newBlocks:
+		case blkey, ok := <-bs.newBlocks:
 			if !ok {
 				log.Debug("newBlocks channel closed")
 				return
 			}
+
 			if keysOut == nil {
-				nextKey = blk.Key()
+				nextKey = blkey
 				keysOut = bs.provideKeys
 			} else {
-				toProvide = append(toProvide, blk.Key())
+				toProvide = append(toProvide, blkey)
 			}
 		case keysOut <- nextKey:
 			if len(toProvide) > 0 {
@@ -168,12 +168,21 @@ func (bs *Bitswap) rebroadcastWorker(parent context.Context) {
 		case <-tick.C:
 			n := bs.wm.wl.Len()
 			if n > 0 {
-				log.Debug(n, "keys in bitswap wantlist")
+				log.Debug(n, " keys in bitswap wantlist")
 			}
 		case <-broadcastSignal.C: // resend unfulfilled wantlist keys
 			log.Event(ctx, "Bitswap.Rebroadcast.active")
-			for _, e := range bs.wm.wl.Entries() {
-				bs.findKeys <- &e
+			entries := bs.wm.wl.Entries()
+			if len(entries) == 0 {
+				continue
+			}
+
+			// TODO: come up with a better strategy for determining when to search
+			// for new providers for blocks.
+			i := rand.Intn(len(entries))
+			bs.findKeys <- &blockRequest{
+				Key: entries[i].Key,
+				Ctx: ctx,
 			}
 		case <-parent.Done():
 			return
@@ -183,33 +192,37 @@ func (bs *Bitswap) rebroadcastWorker(parent context.Context) {
 
 func (bs *Bitswap) providerQueryManager(ctx context.Context) {
 	var activeLk sync.Mutex
-	active := make(map[key.Key]*wantlist.Entry)
+	kset := key.NewKeySet()
 
 	for {
 		select {
 		case e := <-bs.findKeys:
 			activeLk.Lock()
-			if _, ok := active[e.Key]; ok {
+			if kset.Has(e.Key) {
 				activeLk.Unlock()
 				continue
 			}
-			active[e.Key] = e
+			kset.Add(e.Key)
 			activeLk.Unlock()
 
-			go func(e *wantlist.Entry) {
+			go func(e *blockRequest) {
 				child, cancel := context.WithTimeout(e.Ctx, providerRequestTimeout)
 				defer cancel()
 				providers := bs.network.FindProvidersAsync(child, e.Key, maxProvidersPerRequest)
+				wg := &sync.WaitGroup{}
 				for p := range providers {
+					wg.Add(1)
 					go func(p peer.ID) {
+						defer wg.Done()
 						err := bs.network.ConnectTo(child, p)
 						if err != nil {
 							log.Debug("failed to connect to provider %s: %s", p, err)
 						}
 					}(p)
 				}
+				wg.Wait()
 				activeLk.Lock()
-				delete(active, e.Key)
+				kset.Remove(e.Key)
 				activeLk.Unlock()
 			}(e)
 

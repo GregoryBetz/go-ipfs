@@ -12,7 +12,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	mh "gx/ipfs/QmYf7ng2hG5XBtJA3tN34DQ2GUN5HNksEw1rLDkmr6vGku/go-multihash"
+	mh "gx/ipfs/QmYDds3421prZgqKbLpEK7T9Aa2eVdQ7o3YarX1LVLdP2J/go-multihash"
 
 	cmds "github.com/ipfs/go-ipfs/commands"
 	core "github.com/ipfs/go-ipfs/core"
@@ -21,10 +21,10 @@ import (
 	ft "github.com/ipfs/go-ipfs/unixfs"
 )
 
-// ErrObjectTooLarge is returned when too much data was read from stdin. current limit 512k
-var ErrObjectTooLarge = errors.New("input object was too large. limit is 512kbytes")
+// ErrObjectTooLarge is returned when too much data was read from stdin. current limit 2m
+var ErrObjectTooLarge = errors.New("input object was too large. limit is 2mbytes")
 
-const inputLimit = 512 * 1024
+const inputLimit = 2 << 20
 
 type Node struct {
 	Links []Link
@@ -63,7 +63,7 @@ directly.`,
 
 var ObjectDataCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline: "Outputs the raw bytes in an IPFS object.",
+		Tagline: "Output the raw bytes of an IPFS object.",
 		ShortDescription: `
 'ipfs object data' is a plumbing command for retrieving the raw bytes stored
 in a DAG node. It outputs to stdout, and <key> is a base58 encoded multihash.
@@ -87,7 +87,12 @@ is the raw data of the object.
 			return
 		}
 
-		fpath := path.Path(req.Arguments()[0])
+		fpath, err := path.ParsePath(req.Arguments()[0])
+		if err != nil {
+			res.SetError(err, cmds.ErrNormal)
+			return
+		}
+
 		node, err := core.Resolve(req.Context(), n, fpath)
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
@@ -99,7 +104,7 @@ is the raw data of the object.
 
 var ObjectLinksCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline: "Outputs the links pointed to by the specified object.",
+		Tagline: "Output the links pointed to by the specified object.",
 		ShortDescription: `
 'ipfs object links' is a plumbing command for retrieving the links from
 a DAG node. It outputs to stdout, and <key> is a base58 encoded
@@ -175,7 +180,7 @@ This command outputs data in the following encodings:
   * "protobuf"
   * "json"
   * "xml"
-(Specified by the "--encoding" or "-enc" flag)`,
+(Specified by the "--encoding" or "--enc" flag)`,
 	},
 
 	Arguments: []cmds.Argument{
@@ -293,7 +298,7 @@ var ObjectStatCmd = &cmds.Command{
 
 var ObjectPutCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline: "Stores input as a DAG object, outputs its key.",
+		Tagline: "Store input as a DAG object, print its key.",
 		ShortDescription: `
 'ipfs object put' is a plumbing command for storing DAG nodes.
 It reads from stdin, and the output is a base58 encoded multihash.
@@ -384,7 +389,7 @@ And then run:
 
 var ObjectNewCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline: "Creates a new object from an ipfs template.",
+		Tagline: "Create a new object from an ipfs template.",
 		ShortDescription: `
 'ipfs object new' is a plumbing command for creating new DAG nodes.
 `,
@@ -424,7 +429,7 @@ Available templates:
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
-		res.SetOutput(&Object{Hash: k.B58String()})
+		res.SetOutput(&Object{Hash: k.String()})
 	},
 	Marshalers: cmds.MarshalerMap{
 		cmds.Text: func(res cmds.Response) (io.Reader, error) {
@@ -538,13 +543,9 @@ func getObjectEnc(o interface{}) objectEncoding {
 }
 
 func getOutput(dagnode *dag.Node) (*Object, error) {
-	key, err := dagnode.Key()
-	if err != nil {
-		return nil, err
-	}
-
+	c := dagnode.Cid()
 	output := &Object{
-		Hash:  key.B58String(),
+		Hash:  c.String(),
 		Links: make([]Link, len(dagnode.Links)),
 	}
 

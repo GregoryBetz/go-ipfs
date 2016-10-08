@@ -1,11 +1,13 @@
 
 BINS = bin/random bin/multihash bin/ipfs bin/pollEndpoint bin/iptb bin/go-sleep
+BINS += bin/go-timeout
 IPFS_ROOT = ../
 IPFS_CMD = ../cmd/ipfs
 RANDOM_SRC = ../Godeps/_workspace/src/github.com/jbenet/go-random
 RANDOM_FILES_SRC = ../Godeps/_workspace/src/github.com/jbenet/go-random-files
 POLLENDPOINT_SRC= ../thirdparty/pollEndpoint
 GOSLEEP_SRC = ./dependencies/go-sleep
+GOTIMEOUT_SRC = ./dependencies/go-timeout
 
 export PATH := ../bin:${PATH}
 
@@ -15,12 +17,13 @@ GOFLAGS =
 all: deps
 
 global-deps:
-	make -C .. deps
+	$(MAKE) -C .. deps
 
 deps: global-deps bins
 
 clean:
-	rm $(BINS)
+	$(MAKE) -C sharness clean
+	rm -rf $(BINS)
 
 bins: $(BINS)
 
@@ -48,15 +51,27 @@ bin/go-sleep: $(call find_go_files, $(GOSLEEP_SRC)) IPFS-BUILD-OPTIONS
 	@echo "*** installing $@ ***"
 	go build $(GOFLAGS) -o bin/go-sleep $(GOSLEEP_SRC)
 
+bin/go-timeout: $(call find_go_files, $(GOTIMEOUT_SRC)) IPFS-BUILD-OPTIONS
+	@echo "*** installing $@ ***"
+	go build $(GOFLAGS) -o bin/go-timeout $(GOTIMEOUT_SRC)
+
 # gx dependencies
 
 multihash_src:
 	$(eval MULTIHASH_HASH := $(shell cd .. && bin/gx deps find go-multihash))
 	$(eval MULTIHASH_SRC := gx/ipfs/$(MULTIHASH_HASH)/go-multihash)
 
+hang-fds_src:
+	$(eval HANG_FDS_HASH := $(shell cd .. && bin/gx deps find hang-fds))
+	$(eval HANG_FDS_SRC := gx/ipfs/$(HANG_FDS_HASH)/hang-fds)
+
 bin/multihash: multihash_src $(call find_go_files, $(MULTIHASH_SRC)) IPFS-BUILD-OPTIONS
 	@echo "*** installing $@ ***"
 	go build $(GOFLAGS) -o bin/multihash $(MULTIHASH_SRC)/multihash
+
+bin/hang-fds: hang-fds_src $(call find_go_files, $(HANG_FDS_SRC)) IPFS-BUILD-OPTIONS
+	@echo "*** installing $@ ***"
+	go build $(GOFLAGS) -o bin/hang-fds $(HANG_FDS_SRC)
 
 iptb_src:
 	$(eval IPTB_HASH := $(shell cd .. && bin/gx deps find iptb))
@@ -71,18 +86,18 @@ bin/iptb: iptb_src $(call find_go_files, $(IPTB_SRC)) IPFS-BUILD-OPTIONS
 test: test_expensive
 
 test_expensive: verify_gofmt
-	cd sharness && make TEST_EXPENSIVE=1
-	cd 3nodetest && make
-	cd dependencies && make
+	$(MAKE) -C sharness TEST_EXPENSIVE=1
+	$(MAKE) -C 3nodetest
+	$(MAKE) -C dependencies
 
 test_cheap: verify_gofmt
-	cd sharness && make
-	cd 3nodetest && make
+	$(MAKE) -C sharness
+	$(MAKE) -C 3nodetest
 
 test_race: verify_gofmt
-	cd sharness && make GOFLAGS=-race TEST_EXPENSIVE=1
-	cd 3nodetest && make GOFLAGS=-race
-	cd dependencies && make GOFLAGS=-race
+	$(MAKE) -C sharness GOFLAGS=-race TEST_EXPENSIVE=1
+	$(MAKE) -C 3nodetest GOFLAGS=-race
+	$(MAKE) -C dependencies GOFLAGS=-race
 
 # Misc
 

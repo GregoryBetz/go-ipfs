@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"strings"
 
-	"gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
+	"gx/ipfs/Qmb912gdngC1UWwTkhuW8knyRbcWeu5kqkxBpveLmW8bSr/go-ipfs-util"
 )
 
 // Types of Command options
@@ -47,8 +47,8 @@ func (o *option) Description() string {
 		o.description += "."
 	}
 	if o.defaultVal != nil {
-		if strings.Contains(o.description, "<default>") {
-			return strings.Replace(o.description, "<default>",
+		if strings.Contains(o.description, "<<default>>") {
+			return strings.Replace(o.description, "<<default>>",
 				fmt.Sprintf("Default: %v.", o.defaultVal), -1)
 		} else {
 			return fmt.Sprintf("%s Default: %v.", o.description, o.defaultVal)

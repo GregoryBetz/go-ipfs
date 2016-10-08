@@ -1,27 +1,28 @@
 package reprovide
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	blocks "github.com/ipfs/go-ipfs/blocks/blockstore"
-	routing "github.com/ipfs/go-ipfs/routing"
-	logging "gx/ipfs/QmNQynaz7qfriSUJkiEZUrm2Wen1u3Kj9goZzWtrPyu7XR/go-log"
 	backoff "gx/ipfs/QmPJUtEJsm5YLUWhF6imvyCH8KZXRJa9Wup7FDMwTy5Ufz/backoff"
-	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	logging "gx/ipfs/QmSpJByNKFX1sCsHBEp3R73FL4NF6FnQTEGyNAXHm2GS52/go-log"
+	routing "gx/ipfs/QmXKuGUzLcgoQvp8M6ZEJzupWUNmx8NoqXEbYLMDjL4rjj/go-libp2p-routing"
+	cid "gx/ipfs/QmakyCk6Vnn16WEKjbkxieZmM2YLTzkFWizbmGowoYPjro/go-cid"
 )
 
 var log = logging.Logger("reprovider")
 
 type Reprovider struct {
 	// The routing system to provide values through
-	rsys routing.IpfsRouting
+	rsys routing.ContentRouting
 
 	// The backing store for blocks to be provided
 	bstore blocks.Blockstore
 }
 
-func NewReprovider(rsys routing.IpfsRouting, bstore blocks.Blockstore) *Reprovider {
+func NewReprovider(rsys routing.ContentRouting, bstore blocks.Blockstore) *Reprovider {
 	return &Reprovider{
 		rsys:   rsys,
 		bstore: bstore,
@@ -53,8 +54,9 @@ func (rp *Reprovider) Reprovide(ctx context.Context) error {
 		return fmt.Errorf("Failed to get key chan from blockstore: %s", err)
 	}
 	for k := range keychan {
+		c := cid.NewCidV0(k.ToMultihash())
 		op := func() error {
-			err := rp.rsys.Provide(ctx, k)
+			err := rp.rsys.Provide(ctx, c)
 			if err != nil {
 				log.Debugf("Failed to provide key: %s", err)
 			}

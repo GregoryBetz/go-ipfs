@@ -13,7 +13,7 @@ import (
 
 var TarCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline: "Utility functions for tar files in IPFS.",
+		Tagline: "Interact with tar files in IPFS.",
 	},
 
 	Subcommands: map[string]*cmds.Command{
@@ -53,16 +53,12 @@ represent it.
 			return
 		}
 
-		k, err := node.Key()
-		if err != nil {
-			res.SetError(err, cmds.ErrNormal)
-			return
-		}
+		c := node.Cid()
 
 		fi.FileName()
 		res.SetOutput(&coreunix.AddedObject{
 			Name: fi.FileName(),
-			Hash: k.B58String(),
+			Hash: c.String(),
 		})
 	},
 	Type: coreunix.AddedObject{},

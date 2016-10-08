@@ -4,16 +4,16 @@ import (
 	"sync"
 	"time"
 
-	key "github.com/ipfs/go-ipfs/blocks/key"
 	wantlist "github.com/ipfs/go-ipfs/exchange/bitswap/wantlist"
 	pq "github.com/ipfs/go-ipfs/thirdparty/pq"
-	peer "gx/ipfs/QmRBqJF7hb8ZSpRcMwUt8hNhydWcxGEhtk81HKq6oUwKvs/go-libp2p-peer"
+	key "gx/ipfs/QmYEoKZXHoAToWfhGF3vryhMn3WWhE1o2MasQ8uzY5iDi9/go-key"
+	peer "gx/ipfs/QmfMmLGoKzCHDN7cGgk64PJr4iipzidDRME8HABSJqvmhC/go-libp2p-peer"
 )
 
 type peerRequestQueue interface {
 	// Pop returns the next peerRequestTask. Returns nil if the peerRequestQueue is empty.
 	Pop() *peerRequestTask
-	Push(entry wantlist.Entry, to peer.ID)
+	Push(entry *wantlist.Entry, to peer.ID)
 	Remove(k key.Key, p peer.ID)
 
 	// NB: cannot expose simply expose taskQueue.Len because trashed elements
@@ -45,7 +45,7 @@ type prq struct {
 }
 
 // Push currently adds a new peerRequestTask to the end of the list
-func (tl *prq) Push(entry wantlist.Entry, to peer.ID) {
+func (tl *prq) Push(entry *wantlist.Entry, to peer.ID) {
 	tl.lock.Lock()
 	defer tl.lock.Unlock()
 	partner, ok := tl.partners[to]
@@ -166,7 +166,7 @@ func (tl *prq) thawRound() {
 }
 
 type peerRequestTask struct {
-	Entry  wantlist.Entry
+	Entry  *wantlist.Entry
 	Target peer.ID
 
 	// A callback to signal that this task has been completed

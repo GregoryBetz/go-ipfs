@@ -4,7 +4,7 @@ package traverse
 import (
 	"errors"
 
-	"gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	"context"
 
 	mdag "github.com/ipfs/go-ipfs/merkledag"
 )
@@ -41,11 +41,7 @@ type traversal struct {
 
 func (t *traversal) shouldSkip(n *mdag.Node) (bool, error) {
 	if t.opts.SkipDuplicates {
-		k, err := n.Key()
-		if err != nil {
-			return true, err
-		}
-
+		k := n.Key()
 		if _, found := t.seen[string(k)]; found {
 			return true, nil
 		}

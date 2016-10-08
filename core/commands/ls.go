@@ -6,13 +6,13 @@ import (
 	"io"
 	"text/tabwriter"
 
-	key "github.com/ipfs/go-ipfs/blocks/key"
 	cmds "github.com/ipfs/go-ipfs/commands"
 	core "github.com/ipfs/go-ipfs/core"
 	merkledag "github.com/ipfs/go-ipfs/merkledag"
 	path "github.com/ipfs/go-ipfs/path"
 	unixfs "github.com/ipfs/go-ipfs/unixfs"
 	unixfspb "github.com/ipfs/go-ipfs/unixfs/pb"
+	key "gx/ipfs/QmYEoKZXHoAToWfhGF3vryhMn3WWhE1o2MasQ8uzY5iDi9/go-key"
 )
 
 type LsLink struct {
@@ -32,12 +32,14 @@ type LsOutput struct {
 
 var LsCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline: "List links from an object.",
+		Tagline: "List directory contents for Unix filesystem objects.",
 		ShortDescription: `
-Displays the links an IPFS or IPNS object(s) contains, with the following
-format:
+Displays the contents of an IPFS or IPNS object(s) at the given path, with
+the following format:
 
   <link base58 hash> <link size in bytes> <link name>
+
+The JSON output contains type information.
 `,
 	},
 
@@ -95,7 +97,7 @@ format:
 						res.SetError(err, cmds.ErrNormal)
 						return
 					}
-					linkNode, err = merkledag.DecodeProtobuf(b.Data())
+					linkNode, err = merkledag.DecodeProtobuf(b.RawData())
 					if err != nil {
 						res.SetError(err, cmds.ErrNormal)
 						return

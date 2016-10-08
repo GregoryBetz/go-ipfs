@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	context "context"
 
 	dag "github.com/ipfs/go-ipfs/merkledag"
 	ft "github.com/ipfs/go-ipfs/unixfs"
@@ -152,6 +152,13 @@ func (d *Directory) Child(name string) (FSNode, error) {
 	return d.childUnsync(name)
 }
 
+func (d *Directory) Uncache(name string) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	delete(d.files, name)
+	delete(d.childDirs, name)
+}
+
 // childFromDag searches through this directories dag node for a child link
 // with the given name
 func (d *Directory) childFromDag(name string) (*dag.Node, error) {
@@ -239,12 +246,7 @@ func (d *Directory) List() ([]NodeListing, error) {
 			return nil, err
 		}
 
-		k, err := nd.Key()
-		if err != nil {
-			return nil, err
-		}
-
-		child.Hash = k.B58String()
+		child.Hash = nd.Key().B58String()
 
 		out = append(out, child)
 	}

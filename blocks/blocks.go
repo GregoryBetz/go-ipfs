@@ -6,14 +6,18 @@ import (
 	"errors"
 	"fmt"
 
-	key "github.com/ipfs/go-ipfs/blocks/key"
-	mh "gx/ipfs/QmYf7ng2hG5XBtJA3tN34DQ2GUN5HNksEw1rLDkmr6vGku/go-multihash"
-	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
+	key "gx/ipfs/QmYEoKZXHoAToWfhGF3vryhMn3WWhE1o2MasQ8uzY5iDi9/go-key"
+
+	mh "gx/ipfs/QmYDds3421prZgqKbLpEK7T9Aa2eVdQ7o3YarX1LVLdP2J/go-multihash"
+	cid "gx/ipfs/QmakyCk6Vnn16WEKjbkxieZmM2YLTzkFWizbmGowoYPjro/go-cid"
+	u "gx/ipfs/Qmb912gdngC1UWwTkhuW8knyRbcWeu5kqkxBpveLmW8bSr/go-ipfs-util"
 )
+
+var ErrWrongHash = errors.New("data did not match given hash!")
 
 type Block interface {
 	Multihash() mh.Multihash
-	Data() []byte
+	RawData() []byte
 	Key() key.Key
 	String() string
 	Loggable() map[string]interface{}
@@ -37,7 +41,7 @@ func NewBlockWithHash(data []byte, h mh.Multihash) (*BasicBlock, error) {
 	if u.Debug {
 		chk := u.Hash(data)
 		if string(chk) != string(h) {
-			return nil, errors.New("Data did not match given hash!")
+			return nil, ErrWrongHash
 		}
 	}
 	return &BasicBlock{data: data, multihash: h}, nil
@@ -47,8 +51,12 @@ func (b *BasicBlock) Multihash() mh.Multihash {
 	return b.multihash
 }
 
-func (b *BasicBlock) Data() []byte {
+func (b *BasicBlock) RawData() []byte {
 	return b.data
+}
+
+func (b *BasicBlock) Cid() *cid.Cid {
+	return cid.NewCidV0(b.multihash)
 }
 
 // Key returns the block's Multihash as a Key value.

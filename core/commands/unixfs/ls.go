@@ -42,6 +42,9 @@ Displays the contents of an IPFS or IPNS object(s) at the given path.
 The JSON output contains size information. For files, the child size
 is the total size of the file contents. For directories, the child
 size is the IPFS link size.
+
+This functionality is deprecated, and will be removed in future versions. If
+possible, please use 'ipfs ls' instead.
 `,
 		LongDescription: `
 Displays the contents of an IPFS or IPNS object(s) at the given path.
@@ -59,6 +62,9 @@ Example:
     cat.jpg
     > ipfs file ls /ipfs/QmW2WQi7j6c7UgJTarActp7tDNikE4B2qXtFCfLPdsgaTQ
     cat.jpg
+
+This functionality is deprecated, and will be removed in future versions. If
+possible, please use 'ipfs ls' instead.
 `,
 	},
 
@@ -87,13 +93,9 @@ Example:
 				return
 			}
 
-			key, err := merkleNode.Key()
-			if err != nil {
-				res.SetError(err, cmds.ErrNormal)
-				return
-			}
+			c := merkleNode.Cid()
 
-			hash := key.B58String()
+			hash := c.String()
 			output.Arguments[fpath] = hash
 
 			if _, ok := output.Objects[hash]; ok {
@@ -110,7 +112,7 @@ Example:
 			t := unixFSNode.GetType()
 
 			output.Objects[hash] = &LsObject{
-				Hash: key.String(),
+				Hash: c.String(),
 				Type: t.String(),
 				Size: unixFSNode.GetFilesize(),
 			}

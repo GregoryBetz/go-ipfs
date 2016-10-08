@@ -21,7 +21,7 @@ type VersionOutput struct {
 
 var VersionCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline:          "Shows ipfs version information.",
+		Tagline:          "Show ipfs version information.",
 		ShortDescription: "Returns the current version of ipfs and exits.",
 	},
 
@@ -35,7 +35,7 @@ var VersionCmd = &cmds.Command{
 		res.SetOutput(&VersionOutput{
 			Version: config.CurrentVersionNumber,
 			Commit:  config.CurrentCommit,
-			Repo:    fsrepo.RepoVersion,
+			Repo:    fmt.Sprint(fsrepo.RepoVersion),
 			System:  runtime.GOARCH + "/" + runtime.GOOS, //TODO: Precise version here
 			Golang:  runtime.Version(),
 		})

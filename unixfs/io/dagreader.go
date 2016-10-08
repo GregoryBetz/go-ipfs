@@ -7,8 +7,8 @@ import (
 	"io"
 	"os"
 
+	"context"
 	proto "gx/ipfs/QmZ4Qi3GaRbjcx28Sme5eMH7RQjGkt8wHxt2a65oLaeFEV/gogo-protobuf/proto"
-	"gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
 
 	mdag "github.com/ipfs/go-ipfs/merkledag"
 	ft "github.com/ipfs/go-ipfs/unixfs"
@@ -68,9 +68,7 @@ func NewDagReader(ctx context.Context, n *mdag.Node, serv mdag.DAGService) (*Dag
 	case ftpb.Data_Directory:
 		// Dont allow reading directories
 		return nil, ErrIsDir
-	case ftpb.Data_Raw:
-		fallthrough
-	case ftpb.Data_File:
+	case ftpb.Data_File, ftpb.Data_Raw:
 		return NewDataFileReader(ctx, n, pb, serv), nil
 	case ftpb.Data_Metadata:
 		if len(n.Links) == 0 {
@@ -133,7 +131,7 @@ func (dr *DagReader) precalcNextBuf(ctx context.Context) error {
 		dr.buf = NewRSNCFromBytes(pb.GetData())
 		return nil
 	case ftpb.Data_Metadata:
-		return errors.New("Shouldnt have had metadata object inside file")
+		return errors.New("shouldnt have had metadata object inside file")
 	case ftpb.Data_Symlink:
 		return errors.New("shouldnt have had symlink inside file")
 	default:
@@ -208,6 +206,10 @@ func (dr *DagReader) WriteTo(w io.Writer) (int64, error) {
 func (dr *DagReader) Close() error {
 	dr.cancel()
 	return nil
+}
+
+func (dr *DagReader) Offset() int64 {
+	return dr.offset
 }
 
 // Seek implements io.Seeker, and will seek to a given offset in the file

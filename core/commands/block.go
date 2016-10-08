@@ -9,10 +9,10 @@ import (
 	"strings"
 
 	"github.com/ipfs/go-ipfs/blocks"
-	key "github.com/ipfs/go-ipfs/blocks/key"
+	util "github.com/ipfs/go-ipfs/blocks/blockstore/util"
 	cmds "github.com/ipfs/go-ipfs/commands"
-	mh "gx/ipfs/QmYf7ng2hG5XBtJA3tN34DQ2GUN5HNksEw1rLDkmr6vGku/go-multihash"
-	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
+	cid "gx/ipfs/QmakyCk6Vnn16WEKjbkxieZmM2YLTzkFWizbmGowoYPjro/go-cid"
+	u "gx/ipfs/Qmb912gdngC1UWwTkhuW8knyRbcWeu5kqkxBpveLmW8bSr/go-ipfs-util"
 )
 
 type BlockStat struct {
@@ -26,7 +26,7 @@ func (bs BlockStat) String() string {
 
 var BlockCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline: "Manipulate raw IPFS blocks.",
+		Tagline: "Interact with raw IPFS blocks.",
 		ShortDescription: `
 'ipfs block' is a plumbing command used to manipulate raw ipfs blocks.
 Reads from stdin or writes to stdout, and <key> is a base58 encoded
@@ -38,6 +38,7 @@ multihash.
 		"stat": blockStatCmd,
 		"get":  blockGetCmd,
 		"put":  blockPutCmd,
+		"rm":   blockRmCmd,
 	},
 }
 
@@ -66,7 +67,7 @@ on raw ipfs blocks. It outputs the following to stdout:
 
 		res.SetOutput(&BlockStat{
 			Key:  b.Key().B58String(),
-			Size: len(b.Data()),
+			Size: len(b.RawData()),
 		})
 	},
 	Type: BlockStat{},
@@ -97,13 +98,13 @@ It outputs to stdout, and <key> is a base58 encoded multihash.
 			return
 		}
 
-		res.SetOutput(bytes.NewReader(b.Data()))
+		res.SetOutput(bytes.NewReader(b.RawData()))
 	},
 }
 
 var blockPutCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline: "Stores input as an IPFS block.",
+		Tagline: "Store input as an IPFS block.",
 		ShortDescription: `
 'ipfs block put' is a plumbing command for storing raw ipfs blocks.
 It reads from stdin, and <key> is a base58 encoded multihash.
@@ -141,7 +142,7 @@ It reads from stdin, and <key> is a base58 encoded multihash.
 		b := blocks.NewBlock(data)
 		log.Debugf("BlockPut key: '%q'", b.Key())
 
-		k, err := n.Blocks.AddBlock(b)
+		k, err := n.Blocks.AddObject(b)
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
@@ -171,17 +172,80 @@ func getBlockForKey(req cmds.Request, skey string) (blocks.Block, error) {
 		return nil, errors.New("Not a valid hash")
 	}
 
-	h, err := mh.FromB58String(skey)
+	c, err := cid.Decode(skey)
 	if err != nil {
 		return nil, err
 	}
 
-	k := key.Key(h)
-	b, err := n.Blocks.GetBlock(req.Context(), k)
+	b, err := n.Blocks.GetBlock(req.Context(), c)
 	if err != nil {
 		return nil, err
 	}
 
 	log.Debugf("ipfs block: got block with key: %q", b.Key())
 	return b, nil
+}
+
+var blockRmCmd = &cmds.Command{
+	Helptext: cmds.HelpText{
+		Tagline: "Remove IPFS block(s).",
+		ShortDescription: `
+'ipfs block rm' is a plumbing command for removing raw ipfs blocks.
+It takes a list of base58 encoded multihashs to remove.
+`,
+	},
+	Arguments: []cmds.Argument{
+		cmds.StringArg("hash", true, true, "Bash58 encoded multihash of block(s) to remove."),
+	},
+	Options: []cmds.Option{
+		cmds.BoolOption("force", "f", "Ignore nonexistent blocks.").Default(false),
+		cmds.BoolOption("quiet", "q", "Write minimal output.").Default(false),
+	},
+	Run: func(req cmds.Request, res cmds.Response) {
+		n, err := req.InvocContext().GetNode()
+		if err != nil {
+			res.SetError(err, cmds.ErrNormal)
+			return
+		}
+		hashes := req.Arguments()
+		force, _, _ := req.Option("force").Bool()
+		quiet, _, _ := req.Option("quiet").Bool()
+		cids := make([]*cid.Cid, 0, len(hashes))
+		for _, hash := range hashes {
+			c, err := cid.Decode(hash)
+			if err != nil {
+				res.SetError(fmt.Errorf("invalid content id: %s (%s)", hash, err), cmds.ErrNormal)
+				return
+			}
+
+			cids = append(cids, c)
+		}
+		outChan := make(chan interface{})
+		err = util.RmBlocks(n.Blockstore, n.Pinning, outChan, cids, util.RmBlocksOpts{
+			Quiet: quiet,
+			Force: force,
+		})
+		if err != nil {
+			res.SetError(err, cmds.ErrNormal)
+			return
+		}
+		res.SetOutput((<-chan interface{})(outChan))
+	},
+	PostRun: func(req cmds.Request, res cmds.Response) {
+		if res.Error() != nil {
+			return
+		}
+		outChan, ok := res.Output().(<-chan interface{})
+		if !ok {
+			res.SetError(u.ErrCast(), cmds.ErrNormal)
+			return
+		}
+		res.SetOutput(nil)
+
+		err := util.ProcRmOutput(outChan, res.Stdout(), res.Stderr())
+		if err != nil {
+			res.SetError(err, cmds.ErrNormal)
+		}
+	},
+	Type: util.RemovedBlock{},
 }

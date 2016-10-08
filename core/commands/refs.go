@@ -6,13 +6,15 @@ import (
 	"io"
 	"strings"
 
-	key "github.com/ipfs/go-ipfs/blocks/key"
 	cmds "github.com/ipfs/go-ipfs/commands"
 	"github.com/ipfs/go-ipfs/core"
 	dag "github.com/ipfs/go-ipfs/merkledag"
 	path "github.com/ipfs/go-ipfs/path"
-	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
-	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	key "gx/ipfs/QmYEoKZXHoAToWfhGF3vryhMn3WWhE1o2MasQ8uzY5iDi9/go-key"
+
+	context "context"
+	cid "gx/ipfs/QmakyCk6Vnn16WEKjbkxieZmM2YLTzkFWizbmGowoYPjro/go-cid"
+	u "gx/ipfs/Qmb912gdngC1UWwTkhuW8knyRbcWeu5kqkxBpveLmW8bSr/go-ipfs-util"
 )
 
 // KeyList is a general type for outputting lists of keys
@@ -32,7 +34,7 @@ func KeyListTextMarshaler(res cmds.Response) (io.Reader, error) {
 
 var RefsCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline: "Lists links (references) from an object.",
+		Tagline: "List links (references) from an object.",
 		ShortDescription: `
 Lists the hashes of all the links an IPFS or IPNS object(s) contains,
 with the following format:
@@ -74,16 +76,25 @@ NOTE: List all references recursively by using the flag '-r'.
 			return
 		}
 
-		edges, _, err := req.Option("edges").Bool()
+		format, _, err := req.Option("format").String()
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
 		}
 
-		format, _, err := req.Option("format").String()
+		edges, _, err := req.Option("edges").Bool()
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return
+		}
+		if edges {
+			if format != "<dst>" {
+				res.SetError(errors.New("using format arguement with edges is not allowed"),
+					cmds.ErrClient)
+				return
+			}
+
+			format = "<src> -> <dst>"
 		}
 
 		objs, err := objectsForPaths(ctx, n, req.Arguments())
@@ -103,7 +114,6 @@ NOTE: List all references recursively by using the flag '-r'.
 				DAG:       n.DAG,
 				Ctx:       ctx,
 				Unique:    unique,
-				PrintEdge: edges,
 				PrintFmt:  format,
 				Recursive: recursive,
 			}
@@ -122,7 +132,7 @@ NOTE: List all references recursively by using the flag '-r'.
 
 var RefsLocalCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline: "Lists all local references.",
+		Tagline: "List all local references.",
 		ShortDescription: `
 Displays the hashes of all local objects.
 `,
@@ -210,10 +220,9 @@ type RefWriter struct {
 
 	Unique    bool
 	Recursive bool
-	PrintEdge bool
 	PrintFmt  string
 
-	seen map[key.Key]struct{}
+	seen *cid.Set
 }
 
 // WriteRefs writes refs of the given object to the underlying writer.
@@ -225,19 +234,16 @@ func (rw *RefWriter) WriteRefs(n *dag.Node) (int, error) {
 }
 
 func (rw *RefWriter) writeRefsRecursive(n *dag.Node) (int, error) {
-	nkey, err := n.Key()
-	if err != nil {
-		return 0, err
-	}
+	nc := n.Cid()
 
 	var count int
 	for i, ng := range dag.GetDAG(rw.Ctx, rw.DAG, n) {
-		lk := key.Key(n.Links[i].Hash)
-		if rw.skip(lk) {
+		lc := cid.NewCidV0(n.Links[i].Hash)
+		if rw.skip(lc) {
 			continue
 		}
 
-		if err := rw.WriteEdge(nkey, lk, n.Links[i].Name); err != nil {
+		if err := rw.WriteEdge(nc, lc, n.Links[i].Name); err != nil {
 			return count, err
 		}
 
@@ -256,24 +262,21 @@ func (rw *RefWriter) writeRefsRecursive(n *dag.Node) (int, error) {
 }
 
 func (rw *RefWriter) writeRefsSingle(n *dag.Node) (int, error) {
-	nkey, err := n.Key()
-	if err != nil {
-		return 0, err
-	}
+	c := n.Cid()
 
-	if rw.skip(nkey) {
+	if rw.skip(c) {
 		return 0, nil
 	}
 
 	count := 0
 	for _, l := range n.Links {
-		lk := key.Key(l.Hash)
+		lc := cid.NewCidV0(l.Hash)
 
-		if rw.skip(lk) {
+		if rw.skip(lc) {
 			continue
 		}
 
-		if err := rw.WriteEdge(nkey, lk, l.Name); err != nil {
+		if err := rw.WriteEdge(c, lc, l.Name); err != nil {
 			return count, err
 		}
 		count++
@@ -281,25 +284,25 @@ func (rw *RefWriter) writeRefsSingle(n *dag.Node) (int, error) {
 	return count, nil
 }
 
-// skip returns whether to skip a key
-func (rw *RefWriter) skip(k key.Key) bool {
+// skip returns whether to skip a cid
+func (rw *RefWriter) skip(c *cid.Cid) bool {
 	if !rw.Unique {
 		return false
 	}
 
 	if rw.seen == nil {
-		rw.seen = make(map[key.Key]struct{})
+		rw.seen = cid.NewSet()
 	}
 
-	_, found := rw.seen[k]
-	if !found {
-		rw.seen[k] = struct{}{}
+	has := rw.seen.Has(c)
+	if !has {
+		rw.seen.Add(c)
 	}
-	return found
+	return has
 }
 
 // Write one edge
-func (rw *RefWriter) WriteEdge(from, to key.Key, linkname string) error {
+func (rw *RefWriter) WriteEdge(from, to *cid.Cid, linkname string) error {
 	if rw.Ctx != nil {
 		select {
 		case <-rw.Ctx.Done(): // just in case.
@@ -312,13 +315,11 @@ func (rw *RefWriter) WriteEdge(from, to key.Key, linkname string) error {
 	switch {
 	case rw.PrintFmt != "":
 		s = rw.PrintFmt
-		s = strings.Replace(s, "<src>", from.B58String(), -1)
-		s = strings.Replace(s, "<dst>", to.B58String(), -1)
+		s = strings.Replace(s, "<src>", from.String(), -1)
+		s = strings.Replace(s, "<dst>", to.String(), -1)
 		s = strings.Replace(s, "<linkname>", linkname, -1)
-	case rw.PrintEdge:
-		s = from.B58String() + " -> " + to.B58String()
 	default:
-		s += to.B58String()
+		s += to.String()
 	}
 
 	rw.out <- &RefWrapper{Ref: s}

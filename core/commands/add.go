@@ -7,13 +7,16 @@ import (
 	"github.com/ipfs/go-ipfs/core/coreunix"
 	"gx/ipfs/QmeWjRodbcZFKe5tMN7poEx3izym6osrLSnTLf9UjJZBbs/pb"
 
+	blockservice "github.com/ipfs/go-ipfs/blockservice"
 	cmds "github.com/ipfs/go-ipfs/commands"
 	files "github.com/ipfs/go-ipfs/commands/files"
 	core "github.com/ipfs/go-ipfs/core"
+	offline "github.com/ipfs/go-ipfs/exchange/offline"
+	dag "github.com/ipfs/go-ipfs/merkledag"
 	dagtest "github.com/ipfs/go-ipfs/merkledag/test"
 	mfs "github.com/ipfs/go-ipfs/mfs"
 	ft "github.com/ipfs/go-ipfs/unixfs"
-	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
+	u "gx/ipfs/Qmb912gdngC1UWwTkhuW8knyRbcWeu5kqkxBpveLmW8bSr/go-ipfs-util"
 )
 
 // Error indicating the max depth has been exceded.
@@ -68,7 +71,7 @@ You can now refer to the added file in a gateway, like so:
 		cmds.OptionRecursivePath, // a builtin option that allows recursive paths (-r, --recursive)
 		cmds.BoolOption(quietOptionName, "q", "Write minimal output.").Default(false),
 		cmds.BoolOption(silentOptionName, "Write no output.").Default(false),
-		cmds.BoolOption(progressOptionName, "p", "Stream progress data.").Default(true),
+		cmds.BoolOption(progressOptionName, "p", "Stream progress data."),
 		cmds.BoolOption(trickleOptionName, "t", "Use trickle-dag format for dag generation.").Default(false),
 		cmds.BoolOption(onlyHashOptionName, "n", "Only chunk and hash - do not write to disk.").Default(false),
 		cmds.BoolOption(wrapOptionName, "w", "Wrap files with a directory object.").Default(false),
@@ -79,6 +82,11 @@ You can now refer to the added file in a gateway, like so:
 	PreRun: func(req cmds.Request) error {
 		if quiet, _, _ := req.Option(quietOptionName).Bool(); quiet {
 			return nil
+		}
+
+		_, found, _ := req.Option(progressOptionName).Bool()
+		if !found {
+			req.SetOption(progressOptionName, true)
 		}
 
 		sizeFile, ok := req.Files().(files.SizeFile)
@@ -141,10 +149,18 @@ You can now refer to the added file in a gateway, like so:
 			n = nilnode
 		}
 
+		dserv := n.DAG
+		local, _, _ := req.Option("local").Bool()
+		if local {
+			offlineexch := offline.Exchange(n.Blockstore)
+			bserv := blockservice.New(n.Blockstore, offlineexch)
+			dserv = dag.NewDAGService(bserv)
+		}
+
 		outChan := make(chan interface{}, 8)
 		res.SetOutput((<-chan interface{})(outChan))
 
-		fileAdder, err := coreunix.NewAdder(req.Context(), n.Pinning, n.Blockstore, n.DAG)
+		fileAdder, err := coreunix.NewAdder(req.Context(), n.Pinning, n.Blockstore, dserv)
 		if err != nil {
 			res.SetError(err, cmds.ErrNormal)
 			return

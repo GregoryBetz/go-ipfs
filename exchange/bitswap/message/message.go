@@ -4,10 +4,10 @@ import (
 	"io"
 
 	blocks "github.com/ipfs/go-ipfs/blocks"
-	key "github.com/ipfs/go-ipfs/blocks/key"
 	pb "github.com/ipfs/go-ipfs/exchange/bitswap/message/pb"
 	wantlist "github.com/ipfs/go-ipfs/exchange/bitswap/wantlist"
-	inet "gx/ipfs/QmVCe3SNMjkcPgnpFhZs719dheq6xE7gJwjzV7aWcUM4Ms/go-libp2p/p2p/net"
+	key "gx/ipfs/QmYEoKZXHoAToWfhGF3vryhMn3WWhE1o2MasQ8uzY5iDi9/go-key"
+	inet "gx/ipfs/QmdXimY9QHaasZmw6hWojWnCJvfgxETjZQfg9g6ZrA9wMX/go-libp2p-net"
 
 	ggio "gx/ipfs/QmZ4Qi3GaRbjcx28Sme5eMH7RQjGkt8wHxt2a65oLaeFEV/gogo-protobuf/io"
 	proto "gx/ipfs/QmZ4Qi3GaRbjcx28Sme5eMH7RQjGkt8wHxt2a65oLaeFEV/gogo-protobuf/proto"
@@ -64,7 +64,7 @@ func newMsg(full bool) *impl {
 }
 
 type Entry struct {
-	wantlist.Entry
+	*wantlist.Entry
 	Cancel bool
 }
 
@@ -120,7 +120,7 @@ func (m *impl) addEntry(k key.Key, priority int, cancel bool) {
 		e.Cancel = cancel
 	} else {
 		m.wantlist[k] = Entry{
-			Entry: wantlist.Entry{
+			Entry: &wantlist.Entry{
 				Key:      k,
 				Priority: priority,
 			},
@@ -159,7 +159,7 @@ func (m *impl) ToProto() *pb.Message {
 		})
 	}
 	for _, b := range m.Blocks() {
-		pbm.Blocks = append(pbm.Blocks, b.Data())
+		pbm.Blocks = append(pbm.Blocks, b.RawData())
 	}
 	return pbm
 }

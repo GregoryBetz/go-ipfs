@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
+	context "context"
 	blocks "github.com/ipfs/go-ipfs/blocks"
 	blocksutil "github.com/ipfs/go-ipfs/blocks/blocksutil"
-	key "github.com/ipfs/go-ipfs/blocks/key"
-	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	key "gx/ipfs/QmYEoKZXHoAToWfhGF3vryhMn3WWhE1o2MasQ8uzY5iDi9/go-key"
 )
 
 func TestDuplicates(t *testing.T) {
@@ -159,7 +159,7 @@ func assertBlockChannelNil(t *testing.T, blockChannel <-chan blocks.Block) {
 }
 
 func assertBlocksEqual(t *testing.T, a, b blocks.Block) {
-	if !bytes.Equal(a.Data(), b.Data()) {
+	if !bytes.Equal(a.RawData(), b.RawData()) {
 		t.Fatal("blocks aren't equal")
 	}
 	if a.Key() != b.Key() {

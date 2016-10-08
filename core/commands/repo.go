@@ -15,7 +15,7 @@ import (
 	fsrepo "github.com/ipfs/go-ipfs/repo/fsrepo"
 	lockfile "github.com/ipfs/go-ipfs/repo/fsrepo/lock"
 
-	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
+	u "gx/ipfs/Qmb912gdngC1UWwTkhuW8knyRbcWeu5kqkxBpveLmW8bSr/go-ipfs-util"
 )
 
 type RepoVersion struct {
@@ -24,7 +24,7 @@ type RepoVersion struct {
 
 var RepoCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline: "Manipulate the IPFS repo.",
+		Tagline: "Interact with the IPFS repo.",
 		ShortDescription: `
 'ipfs repo' is a plumbing command used to manipulate the repo.
 `,
@@ -172,7 +172,7 @@ Version         string The repo version.
 
 var RepoFsckCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline: "Removes repo lockfiles.",
+		Tagline: "Remove repo lockfiles.",
 		ShortDescription: `
 'ipfs repo fsck' is a plumbing command that will remove repo and level db
 lockfiles, as well as the api file. This command can only run when no ipfs
@@ -241,7 +241,7 @@ var repoVerifyCmd = &cmds.Command{
 			defer close(out)
 			bs := bstore.NewBlockstore(nd.Repo.Datastore())
 
-			bs.RuntimeHashing(true)
+			bs.HashOnRead(true)
 
 			keys, err := bs.AllKeysChan(req.Context())
 			if err != nil {
@@ -320,7 +320,7 @@ var repoVersionCmd = &cmds.Command{
 	},
 	Run: func(req cmds.Request, res cmds.Response) {
 		res.SetOutput(&RepoVersion{
-			Version: fsrepo.RepoVersion,
+			Version: fmt.Sprint(fsrepo.RepoVersion),
 		})
 	},
 	Type: RepoVersion{},

@@ -1,31 +1,33 @@
 package network
 
 import (
+	"context"
 	"io"
 
-	key "github.com/ipfs/go-ipfs/blocks/key"
 	bsmsg "github.com/ipfs/go-ipfs/exchange/bitswap/message"
-	routing "github.com/ipfs/go-ipfs/routing"
 
-	logging "gx/ipfs/QmNQynaz7qfriSUJkiEZUrm2Wen1u3Kj9goZzWtrPyu7XR/go-log"
-	pstore "gx/ipfs/QmQdnfvZQuhdT93LNc5bos52wAmdr3G2p6G8teLJMEN32P/go-libp2p-peerstore"
-	peer "gx/ipfs/QmRBqJF7hb8ZSpRcMwUt8hNhydWcxGEhtk81HKq6oUwKvs/go-libp2p-peer"
-	host "gx/ipfs/QmVCe3SNMjkcPgnpFhZs719dheq6xE7gJwjzV7aWcUM4Ms/go-libp2p/p2p/host"
-	inet "gx/ipfs/QmVCe3SNMjkcPgnpFhZs719dheq6xE7gJwjzV7aWcUM4Ms/go-libp2p/p2p/net"
-	ma "gx/ipfs/QmYzDkkgAEmrcNzFCiYo6L1dTX4EAG1gZkbtdbd9trL4vd/go-multiaddr"
+	logging "gx/ipfs/QmSpJByNKFX1sCsHBEp3R73FL4NF6FnQTEGyNAXHm2GS52/go-log"
+	ma "gx/ipfs/QmUAQaWbKxGCUTuoQVvvicbQNZ9APF5pDGWyAZSe93AtKH/go-multiaddr"
+	routing "gx/ipfs/QmXKuGUzLcgoQvp8M6ZEJzupWUNmx8NoqXEbYLMDjL4rjj/go-libp2p-routing"
+	pstore "gx/ipfs/QmXXCcQ7CLg5a81Ui9TTR35QcR4y7ZyihxwfjqaHfUVcVo/go-libp2p-peerstore"
+	key "gx/ipfs/QmYEoKZXHoAToWfhGF3vryhMn3WWhE1o2MasQ8uzY5iDi9/go-key"
 	ggio "gx/ipfs/QmZ4Qi3GaRbjcx28Sme5eMH7RQjGkt8wHxt2a65oLaeFEV/gogo-protobuf/io"
-	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
+	cid "gx/ipfs/QmakyCk6Vnn16WEKjbkxieZmM2YLTzkFWizbmGowoYPjro/go-cid"
+	host "gx/ipfs/QmdML3R42PRSwnt46jSuEts9bHSqLctVYEjJqMR3UYV8ki/go-libp2p-host"
+	inet "gx/ipfs/QmdXimY9QHaasZmw6hWojWnCJvfgxETjZQfg9g6ZrA9wMX/go-libp2p-net"
+	peer "gx/ipfs/QmfMmLGoKzCHDN7cGgk64PJr4iipzidDRME8HABSJqvmhC/go-libp2p-peer"
 )
 
 var log = logging.Logger("bitswap_network")
 
 // NewFromIpfsHost returns a BitSwapNetwork supported by underlying IPFS host
-func NewFromIpfsHost(host host.Host, r routing.IpfsRouting) BitSwapNetwork {
+func NewFromIpfsHost(host host.Host, r routing.ContentRouting) BitSwapNetwork {
 	bitswapNetwork := impl{
 		host:    host,
 		routing: r,
 	}
 	host.SetStreamHandler(ProtocolBitswap, bitswapNetwork.handleNewStream)
+	host.SetStreamHandler(ProtocolBitswapOld, bitswapNetwork.handleNewStream)
 	host.Network().Notify((*netNotifiee)(&bitswapNetwork))
 	// TODO: StopNotify.
 
@@ -36,7 +38,7 @@ func NewFromIpfsHost(host host.Host, r routing.IpfsRouting) BitSwapNetwork {
 // NetMessage objects, into the bitswap network interface.
 type impl struct {
 	host    host.Host
-	routing routing.IpfsRouting
+	routing routing.ContentRouting
 
 	// inbound messages from the network are forwarded to the receiver
 	receiver Receiver
@@ -72,7 +74,7 @@ func (bsnet *impl) newStreamToPeer(ctx context.Context, p peer.ID) (inet.Stream,
 		return nil, err
 	}
 
-	return bsnet.host.NewStream(ctx, ProtocolBitswap, p)
+	return bsnet.host.NewStream(ctx, p, ProtocolBitswap, ProtocolBitswapOld)
 }
 
 func (bsnet *impl) SendMessage(
@@ -145,9 +147,12 @@ func (bsnet *impl) FindProvidersAsync(ctx context.Context, k key.Key, max int) <
 		out <- id
 	}
 
+	// TEMPORARY SHIM UNTIL CID GETS PROPAGATED
+	c := cid.NewCidV0(k.ToMultihash())
+
 	go func() {
 		defer close(out)
-		providers := bsnet.routing.FindProvidersAsync(ctx, k, max)
+		providers := bsnet.routing.FindProvidersAsync(ctx, c, max)
 		for info := range providers {
 			if info.ID == bsnet.host.ID() {
 				continue // ignore self as provider
@@ -165,7 +170,8 @@ func (bsnet *impl) FindProvidersAsync(ctx context.Context, k key.Key, max int) <
 
 // Provide provides the key to the network
 func (bsnet *impl) Provide(ctx context.Context, k key.Key) error {
-	return bsnet.routing.Provide(ctx, k)
+	c := cid.NewCidV0(k.ToMultihash())
+	return bsnet.routing.Provide(ctx, c)
 }
 
 // handleNewStream receives a new stream from the network.

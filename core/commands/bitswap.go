@@ -5,24 +5,27 @@ import (
 	"fmt"
 	"io"
 
-	"gx/ipfs/QmPSBJL4momYnE7DcUyk2DVhD6rH488ZmHBGLbxNdhU44K/go-humanize"
-
-	key "github.com/ipfs/go-ipfs/blocks/key"
 	cmds "github.com/ipfs/go-ipfs/commands"
 	bitswap "github.com/ipfs/go-ipfs/exchange/bitswap"
-	peer "gx/ipfs/QmRBqJF7hb8ZSpRcMwUt8hNhydWcxGEhtk81HKq6oUwKvs/go-libp2p-peer"
-	u "gx/ipfs/QmZNVWh8LLjAavuQ2JXuFmuYH3C11xo988vSgp7UQrTRj1/go-ipfs-util"
+	decision "github.com/ipfs/go-ipfs/exchange/bitswap/decision"
+	key "gx/ipfs/QmYEoKZXHoAToWfhGF3vryhMn3WWhE1o2MasQ8uzY5iDi9/go-key"
+
+	"gx/ipfs/QmPSBJL4momYnE7DcUyk2DVhD6rH488ZmHBGLbxNdhU44K/go-humanize"
+	cid "gx/ipfs/QmakyCk6Vnn16WEKjbkxieZmM2YLTzkFWizbmGowoYPjro/go-cid"
+	u "gx/ipfs/Qmb912gdngC1UWwTkhuW8knyRbcWeu5kqkxBpveLmW8bSr/go-ipfs-util"
+	peer "gx/ipfs/QmfMmLGoKzCHDN7cGgk64PJr4iipzidDRME8HABSJqvmhC/go-libp2p-peer"
 )
 
 var BitswapCmd = &cmds.Command{
 	Helptext: cmds.HelpText{
-		Tagline:          "A set of commands to manipulate the bitswap agent.",
+		Tagline:          "Interact with the bitswap agent.",
 		ShortDescription: ``,
 	},
 	Subcommands: map[string]*cmds.Command{
 		"wantlist": showWantlistCmd,
 		"stat":     bitswapStatCmd,
 		"unwant":   unwantCmd,
+		"ledger":   ledgerCmd,
 	},
 }
 
@@ -53,13 +56,13 @@ var unwantCmd = &cmds.Command{
 
 		var ks []key.Key
 		for _, arg := range req.Arguments() {
-			dec := key.B58KeyDecode(arg)
-			if dec == "" {
-				res.SetError(fmt.Errorf("Incorrectly formatted key: %s", arg), cmds.ErrNormal)
+			c, err := cid.Decode(arg)
+			if err != nil {
+				res.SetError(err, cmds.ErrNormal)
 				return
 			}
 
-			ks = append(ks, dec)
+			ks = append(ks, key.Key(c.Hash()))
 		}
 
 		bs.CancelWants(ks)
@@ -167,6 +170,63 @@ var bitswapStatCmd = &cmds.Command{
 			for _, p := range out.Peers {
 				fmt.Fprintf(buf, "\t\t%s\n", p)
 			}
+			return buf, nil
+		},
+	},
+}
+
+var ledgerCmd = &cmds.Command{
+	Helptext: cmds.HelpText{
+		Tagline: "Show the current ledger for a peer.",
+		ShortDescription: `
+The Bitswap decision engine tracks the number of bytes exchanged between IPFS
+nodes, and stores this information as a collection of ledgers. This command
+prints the ledger associated with a given peer.
+`,
+	},
+	Arguments: []cmds.Argument{
+		cmds.StringArg("peer", true, false, "The PeerID (B58) of the ledger to inspect."),
+	},
+	Type: decision.Receipt{},
+	Run: func(req cmds.Request, res cmds.Response) {
+		nd, err := req.InvocContext().GetNode()
+		if err != nil {
+			res.SetError(err, cmds.ErrNormal)
+			return
+		}
+
+		if !nd.OnlineMode() {
+			res.SetError(errNotOnline, cmds.ErrClient)
+			return
+		}
+
+		bs, ok := nd.Exchange.(*bitswap.Bitswap)
+		if !ok {
+			res.SetError(u.ErrCast(), cmds.ErrNormal)
+			return
+		}
+
+		partner, err := peer.IDB58Decode(req.Arguments()[0])
+		if err != nil {
+			res.SetError(err, cmds.ErrClient)
+			return
+		}
+		res.SetOutput(bs.LedgerForPeer(partner))
+	},
+	Marshalers: cmds.MarshalerMap{
+		cmds.Text: func(res cmds.Response) (io.Reader, error) {
+			out, ok := res.Output().(*decision.Receipt)
+			if !ok {
+				return nil, u.ErrCast()
+			}
+			buf := new(bytes.Buffer)
+			fmt.Fprintf(buf, "Ledger for %s\n"+
+				"Debt ratio:\t%f\n"+
+				"Exchanges:\t%d\n"+
+				"Bytes sent:\t%d\n"+
+				"Bytes received:\t%d\n\n",
+				out.Peer, out.Value, out.Exchanged,
+				out.Sent, out.Recv)
 			return buf, nil
 		},
 	},

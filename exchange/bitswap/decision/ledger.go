@@ -4,9 +4,9 @@ import (
 	"sync"
 	"time"
 
-	key "github.com/ipfs/go-ipfs/blocks/key"
 	wl "github.com/ipfs/go-ipfs/exchange/bitswap/wantlist"
-	peer "gx/ipfs/QmRBqJF7hb8ZSpRcMwUt8hNhydWcxGEhtk81HKq6oUwKvs/go-libp2p-peer"
+	key "gx/ipfs/QmYEoKZXHoAToWfhGF3vryhMn3WWhE1o2MasQ8uzY5iDi9/go-key"
+	peer "gx/ipfs/QmfMmLGoKzCHDN7cGgk64PJr4iipzidDRME8HABSJqvmhC/go-libp2p-peer"
 )
 
 // keySet is just a convenient alias for maps of keys, where we only care
@@ -49,6 +49,14 @@ type ledger struct {
 	lk sync.Mutex
 }
 
+type Receipt struct {
+	Peer      string
+	Value     float64
+	Sent      uint64
+	Recv      uint64
+	Exchanged uint64
+}
+
 type debtRatio struct {
 	BytesSent uint64
 	BytesRecv uint64
@@ -79,7 +87,7 @@ func (l *ledger) CancelWant(k key.Key) {
 	l.wantList.Remove(k)
 }
 
-func (l *ledger) WantListContains(k key.Key) (wl.Entry, bool) {
+func (l *ledger) WantListContains(k key.Key) (*wl.Entry, bool) {
 	return l.wantList.Contains(k)
 }
 

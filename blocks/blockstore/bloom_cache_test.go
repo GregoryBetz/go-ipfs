@@ -8,10 +8,10 @@ import (
 
 	"github.com/ipfs/go-ipfs/blocks"
 
-	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
-	ds "gx/ipfs/QmfQzVugPq1w5shWRcLWSeiHF4a2meBX7yVD8Vw7GWJM9o/go-datastore"
-	dsq "gx/ipfs/QmfQzVugPq1w5shWRcLWSeiHF4a2meBX7yVD8Vw7GWJM9o/go-datastore/query"
-	syncds "gx/ipfs/QmfQzVugPq1w5shWRcLWSeiHF4a2meBX7yVD8Vw7GWJM9o/go-datastore/sync"
+	context "context"
+	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
+	dsq "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore/query"
+	syncds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore/sync"
 )
 
 func testBloomCached(bs GCBlockstore, ctx context.Context) (*bloomcache, error) {
@@ -19,6 +19,7 @@ func testBloomCached(bs GCBlockstore, ctx context.Context) (*bloomcache, error) 
 		ctx = context.TODO()
 	}
 	opts := DefaultCacheOpts()
+	opts.HasARCCacheSize = 0
 	bbs, err := CachedBlockstore(bs, ctx, opts)
 	if err == nil {
 		return bbs.(*bloomcache), nil
@@ -27,58 +28,45 @@ func testBloomCached(bs GCBlockstore, ctx context.Context) (*bloomcache, error) 
 	}
 }
 
+func TestPutManyAddsToBloom(t *testing.T) {
+	bs := NewBlockstore(syncds.MutexWrap(ds.NewMapDatastore()))
+
+	ctx, _ := context.WithTimeout(context.Background(), 1*time.Second)
+	cachedbs, err := testBloomCached(bs, ctx)
+
+	select {
+	case <-cachedbs.rebuildChan:
+	case <-ctx.Done():
+		t.Fatalf("Timeout wating for rebuild: %d", cachedbs.bloom.ElementsAdded())
+	}
+
+	block1 := blocks.NewBlock([]byte("foo"))
+	block2 := blocks.NewBlock([]byte("bar"))
+
+	cachedbs.PutMany([]blocks.Block{block1})
+	has, err := cachedbs.Has(block1.Key())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if has == false {
+		t.Fatal("added block is reported missing")
+	}
+
+	has, err = cachedbs.Has(block2.Key())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if has == true {
+		t.Fatal("not added block is reported to be in blockstore")
+	}
+}
+
 func TestReturnsErrorWhenSizeNegative(t *testing.T) {
 	bs := NewBlockstore(syncds.MutexWrap(ds.NewMapDatastore()))
-	_, err := bloomCached(bs, context.TODO(), 100, 1, -1)
+	_, err := bloomCached(bs, context.TODO(), -1, 1)
 	if err == nil {
 		t.Fail()
 	}
-	_, err = bloomCached(bs, context.TODO(), -1, 1, 100)
-	if err == nil {
-		t.Fail()
-	}
-}
-
-func TestRemoveCacheEntryOnDelete(t *testing.T) {
-	b := blocks.NewBlock([]byte("foo"))
-	cd := &callbackDatastore{f: func() {}, ds: ds.NewMapDatastore()}
-	bs := NewBlockstore(syncds.MutexWrap(cd))
-	cachedbs, err := testBloomCached(bs, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cachedbs.Put(b)
-
-	cd.Lock()
-	writeHitTheDatastore := false
-	cd.Unlock()
-
-	cd.SetFunc(func() {
-		writeHitTheDatastore = true
-	})
-
-	cachedbs.DeleteBlock(b.Key())
-	cachedbs.Put(b)
-	if !writeHitTheDatastore {
-		t.Fail()
-	}
-}
-
-func TestElideDuplicateWrite(t *testing.T) {
-	cd := &callbackDatastore{f: func() {}, ds: ds.NewMapDatastore()}
-	bs := NewBlockstore(syncds.MutexWrap(cd))
-	cachedbs, err := testBloomCached(bs, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	b1 := blocks.NewBlock([]byte("foo"))
-
-	cachedbs.Put(b1)
-	cd.SetFunc(func() {
-		t.Fatal("write hit the datastore")
-	})
-	cachedbs.Put(b1)
 }
 func TestHasIsBloomCached(t *testing.T) {
 	cd := &callbackDatastore{f: func() {}, ds: ds.NewMapDatastore()}
@@ -110,6 +98,31 @@ func TestHasIsBloomCached(t *testing.T) {
 
 	if float64(cacheFails)/float64(1000) > float64(0.05) {
 		t.Fatal("Bloom filter has cache miss rate of more than 5%")
+	}
+
+	cacheFails = 0
+	block := blocks.NewBlock([]byte("newBlock"))
+
+	cachedbs.PutMany([]blocks.Block{block})
+	if cacheFails != 2 {
+		t.Fatalf("expected two datastore hits: %d", cacheFails)
+	}
+	cachedbs.Put(block)
+	if cacheFails != 3 {
+		t.Fatalf("expected datastore hit: %d", cacheFails)
+	}
+
+	if has, err := cachedbs.Has(block.Key()); !has || err != nil {
+		t.Fatal("has gave wrong response")
+	}
+
+	bl, err := cachedbs.Get(block.Key())
+	if bl.String() != block.String() {
+		t.Fatal("block data doesn't match")
+	}
+
+	if err != nil {
+		t.Fatal("there should't be an error")
 	}
 }
 

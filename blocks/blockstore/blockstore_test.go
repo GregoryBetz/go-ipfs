@@ -5,26 +5,26 @@ import (
 	"fmt"
 	"testing"
 
-	context "gx/ipfs/QmZy2y8t9zQH2a1b8q2ZSLKp17ATuJoCNxxyMFG5qFExpt/go-net/context"
-	ds "gx/ipfs/QmfQzVugPq1w5shWRcLWSeiHF4a2meBX7yVD8Vw7GWJM9o/go-datastore"
-	dsq "gx/ipfs/QmfQzVugPq1w5shWRcLWSeiHF4a2meBX7yVD8Vw7GWJM9o/go-datastore/query"
-	ds_sync "gx/ipfs/QmfQzVugPq1w5shWRcLWSeiHF4a2meBX7yVD8Vw7GWJM9o/go-datastore/sync"
+	context "context"
+	u "gx/ipfs/Qmb912gdngC1UWwTkhuW8knyRbcWeu5kqkxBpveLmW8bSr/go-ipfs-util"
+	ds "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore"
+	dsq "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore/query"
+	ds_sync "gx/ipfs/QmbzuUusHqaLLoNTDEVLcSF6vZDHZDLPC7p4bztRvvkXxU/go-datastore/sync"
 
 	blocks "github.com/ipfs/go-ipfs/blocks"
-	key "github.com/ipfs/go-ipfs/blocks/key"
+	key "gx/ipfs/QmYEoKZXHoAToWfhGF3vryhMn3WWhE1o2MasQ8uzY5iDi9/go-key"
 )
-
-// TODO(brian): TestGetReturnsNil
 
 func TestGetWhenKeyNotPresent(t *testing.T) {
 	bs := NewBlockstore(ds_sync.MutexWrap(ds.NewMapDatastore()))
-	_, err := bs.Get(key.Key("not present"))
+	bl, err := bs.Get(key.Key("not present"))
 
-	if err != nil {
-		t.Log("As expected, block is not present")
-		return
+	if bl != nil {
+		t.Error("nil block expected")
 	}
-	t.Fail()
+	if err == nil {
+		t.Error("error expected, got nil")
+	}
 }
 
 func TestGetWhenKeyIsEmptyString(t *testing.T) {
@@ -48,24 +48,35 @@ func TestPutThenGetBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(block.Data(), blockFromBlockstore.Data()) {
+	if !bytes.Equal(block.RawData(), blockFromBlockstore.RawData()) {
 		t.Fail()
 	}
 }
 
-func TestRuntimeHashing(t *testing.T) {
+func TestHashOnRead(t *testing.T) {
+	orginalDebug := u.Debug
+	defer (func() {
+		u.Debug = orginalDebug
+	})()
+	u.Debug = false
+
 	bs := NewBlockstore(ds_sync.MutexWrap(ds.NewMapDatastore()))
 	bl := blocks.NewBlock([]byte("some data"))
 	blBad, err := blocks.NewBlockWithHash([]byte("some other data"), bl.Key().ToMultihash())
 	if err != nil {
-		t.Fatal("Debug is enabled")
+		t.Fatal("debug is off, still got an error")
 	}
-
+	bl2 := blocks.NewBlock([]byte("some other data"))
 	bs.Put(blBad)
-	bs.RuntimeHashing(true)
+	bs.Put(bl2)
+	bs.HashOnRead(true)
 
 	if _, err := bs.Get(bl.Key()); err != ErrHashMismatch {
-		t.Fatalf("Expected '%v' got '%v'\n", ErrHashMismatch, err)
+		t.Fatalf("expected '%v' got '%v'\n", ErrHashMismatch, err)
+	}
+
+	if b, err := bs.Get(bl2.Key()); err != nil || b.String() != bl2.String() {
+		t.Fatal("got wrong blocks")
 	}
 }
 
